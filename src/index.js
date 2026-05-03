@@ -3,6 +3,7 @@ require("dotenv").config();
 const http = require("http");
 const app = require("./app");
 const { initSocket } = require("./sockets/socket");
+const { startAutomaticPlantDataSender } = require("./services/mockPlantData.service");
 
 // init MQTT
 require("./config/mqtt");
@@ -11,6 +12,7 @@ const server = http.createServer(app);
 
 // init websocket
 initSocket(server);
+startAutomaticPlantDataSender();
 
 const PORT = process.env.PORT || 3000;
 const HOST = '0.0.0.0';

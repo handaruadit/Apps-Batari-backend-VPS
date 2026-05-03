@@ -1,17 +1,36 @@
 const db = require("../config/db");
 
+const normalizeCreatedAt = (value) => {
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = value instanceof Date ? value : new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return undefined;
+  }
+
+  return parsed;
+};
+
 // Fungsi Simpan Data Device ke Database
 const saveDeviceData = async (data) => {
   try {
     const rows = Array.isArray(data) ? data : [data];
 
     // MAP KE FORMAT DB
-    const formatted = rows.map(d => ({
-      device_id: d.deviceId,
-      category: d.category,
-      type: d.type,
-      value: d.value,
-    }));
+    const formatted = rows.map((d) => {
+      const createdAt = normalizeCreatedAt(d.createdAt || d.timestamp);
+
+      return {
+        device_id: d.deviceId,
+        category: d.category,
+        type: d.type,
+        value: d.value,
+        ...(createdAt ? { created_at: createdAt } : {}),
+      };
+    });
 
     await db("device_data").insert(formatted);
 
@@ -51,7 +70,11 @@ const getDeviceData = async (filters) => {
     }
 
     // SORT DATA TERBARU
-    query = query.orderBy("created_at", "desc");
+    if (filters.latestBy === "inserted") {
+      query = query.orderBy("id", "desc");
+    } else {
+      query = query.orderBy("created_at", "desc");
+    }
 
     // DEFAULT LIMIT
     query = query.limit(filters.limit || countData);
