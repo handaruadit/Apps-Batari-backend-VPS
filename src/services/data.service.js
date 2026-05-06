@@ -14,6 +14,145 @@ const normalizeCreatedAt = (value) => {
   return parsed;
 };
 
+const CHART_CATEGORY_ALIASES = {
+  pv: ["pv", "solar"],
+  grid: ["grid"],
+  battery: ["battery", "baterai"],
+  load: ["load", "out"],
+};
+
+const CHART_TYPE_ALIASES = {
+  power: ["power"],
+  chargePower: ["chargePower", "charge_power", "chargepower"],
+  vaPower: ["vaPower", "va_power", "vapower"],
+};
+
+const CHART_ALLOWED_SEGMENTS = ["day", "month", "year", "lifetime"];
+
+const normalizeText = (value) =>
+  String(value ?? "")
+    .trim()
+    .replace(/[-_\s]+/g, "")
+    .toLowerCase();
+
+const matchesAlias = (value, aliases) => {
+  const normalizedValue = normalizeText(value);
+  return aliases.some((alias) => normalizeText(alias) === normalizedValue);
+};
+
+const getChartDateRange = (segment, date) => {
+  if (!CHART_ALLOWED_SEGMENTS.includes(segment)) {
+    throw new Error("Invalid_Chart_Segment");
+  }
+
+  if (segment === "lifetime") {
+    return {};
+  }
+
+  if (segment === "day") {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))) {
+      throw new Error("Invalid_Chart_Date");
+    }
+
+    return {
+      start: new Date(`${date}T00:00:00`),
+      end: new Date(`${date}T23:59:59.999`),
+    };
+  }
+
+  if (segment === "month") {
+    if (!/^\d{4}-\d{2}$/.test(String(date || ""))) {
+      throw new Error("Invalid_Chart_Date");
+    }
+
+    const [year, month] = String(date).split("-").map(Number);
+
+    return {
+      start: new Date(year, month - 1, 1, 0, 0, 0, 0),
+      end: new Date(year, month, 0, 23, 59, 59, 999),
+    };
+  }
+
+  if (!/^\d{4}$/.test(String(date || ""))) {
+    throw new Error("Invalid_Chart_Date");
+  }
+
+  const year = Number(date);
+
+  return {
+    start: new Date(year, 0, 1, 0, 0, 0, 0),
+    end: new Date(year, 11, 31, 23, 59, 59, 999),
+  };
+};
+
+const formatChartRow = (row) => ({
+  id: row.id,
+  device_id: row.device_id,
+  category: row.category,
+  type: row.type,
+  value: row.value === null || row.value === undefined ? null : Number(row.value),
+  created_at: row.created_at,
+});
+
+const buildChartSeries = (rows) => {
+  const productionRows = [];
+  const pvPowerRows = [];
+  const loadRows = [];
+  const upsLoadRows = [];
+  const gridRows = [];
+  const batteryRows = [];
+
+  rows.forEach((row) => {
+    const formattedRow = formatChartRow(row);
+
+    if (matchesAlias(row.category, CHART_CATEGORY_ALIASES.pv)) {
+      if (matchesAlias(row.type, CHART_TYPE_ALIASES.chargePower)) {
+        productionRows.push(formattedRow);
+      }
+
+      if (matchesAlias(row.type, CHART_TYPE_ALIASES.power)) {
+        pvPowerRows.push(formattedRow);
+      }
+    }
+
+    if (
+      matchesAlias(row.category, CHART_CATEGORY_ALIASES.load) &&
+      matchesAlias(row.type, CHART_TYPE_ALIASES.power)
+    ) {
+      loadRows.push(formattedRow);
+    }
+
+    if (
+      matchesAlias(row.category, CHART_CATEGORY_ALIASES.load) &&
+      matchesAlias(row.type, CHART_TYPE_ALIASES.vaPower)
+    ) {
+      upsLoadRows.push(formattedRow);
+    }
+
+    if (
+      matchesAlias(row.category, CHART_CATEGORY_ALIASES.grid) &&
+      matchesAlias(row.type, CHART_TYPE_ALIASES.power)
+    ) {
+      gridRows.push(formattedRow);
+    }
+
+    if (
+      matchesAlias(row.category, CHART_CATEGORY_ALIASES.battery) &&
+      matchesAlias(row.type, CHART_TYPE_ALIASES.power)
+    ) {
+      batteryRows.push(formattedRow);
+    }
+  });
+
+  return {
+    production: productionRows.length ? productionRows : pvPowerRows,
+    load: loadRows.length ? loadRows : upsLoadRows,
+    upsLoad: upsLoadRows.length ? upsLoadRows : loadRows,
+    grid: gridRows,
+    battery: batteryRows,
+  };
+};
+
 // Fungsi Simpan Data Device ke Database
 const saveDeviceData = async (data) => {
   try {
@@ -192,6 +331,29 @@ const getLifetimeData = async ({ deviceId, category, types }) => {
         .orderBy(["year", "category", "type"]);
 };
 
+const getChartData = async ({ deviceIds, segment, date }) => {
+  const { start, end } = getChartDateRange(segment, date);
+  const categories = Object.values(CHART_CATEGORY_ALIASES).flat();
+  const types = Object.values(CHART_TYPE_ALIASES).flat();
+
+  let query = db("device_data")
+    .select("id", "device_id", "category", "type", "value", "created_at")
+    .whereIn("device_id", deviceIds)
+    .whereIn("category", categories)
+    .whereIn("type", types);
+
+  if (start && end) {
+    query = query.whereBetween("created_at", [start, end]);
+  }
+
+  const rows = await query.orderBy([
+    { column: "created_at", order: "asc" },
+    { column: "id", order: "asc" },
+  ]);
+
+  return buildChartSeries(rows);
+};
+
 // const formatByType = (rows, key) => {
 //   const result = {};
 
@@ -251,6 +413,7 @@ module.exports = {
     getMonthlyData,
     getYearlyData,
     getLifetimeData,
+    getChartData,
     // formatByType,
     checkDeviceAccess,
     getDeviceIdData,

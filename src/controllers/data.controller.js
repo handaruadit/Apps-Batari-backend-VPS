@@ -4,6 +4,7 @@ const {
     getMonthlyData, 
     getYearlyData, 
     getLifetimeData, 
+    getChartData,
     getDeviceIdData } = require("../services/data.service");
 const {
     sendManualPlantData: sendManualPlantDataService,
@@ -298,6 +299,77 @@ const getLifetime = async (req, res) => {
     } catch (err) {res.status(500).json({ status: "error" });}
 };
 
+const getChart = async (req, res) => {
+    try {
+        const { plantId, segment = "day", date } = req.query;
+        const userId = req.user.userId;
+
+        if (!plantId) {
+            return res.status(400).json({
+                success: false,
+                status: "error",
+                message: "plantId is required",
+            });
+        }
+
+        const deviceIds = await getDeviceIdData(userId, plantId);
+
+        if (!deviceIds || deviceIds.length === 0) {
+            return res.status(404).json({
+                success: false,
+                status: "error",
+                message: "No devices found for the specified plant",
+            });
+        }
+
+        const data = await getChartData({
+            deviceIds: deviceIds.map((d) => d.device_id),
+            segment,
+            date,
+        });
+
+        res.json({
+            success: true,
+            status: "success",
+            data,
+        });
+    } catch (err) {
+        if (err.message === "Access_Denied") {
+            return res.status(403).json({
+                success: false,
+                status: "error",
+                message: "Access denied",
+            });
+        }
+
+        if (err.message === "Data_Not_Found") {
+            return res.status(404).json({
+                success: false,
+                status: "error",
+                message: "No devices found for the specified plant",
+            });
+        }
+
+        if (
+            err.message === "Invalid_Chart_Segment" ||
+            err.message === "Invalid_Chart_Date"
+        ) {
+            return res.status(400).json({
+                success: false,
+                status: "error",
+                message: "Invalid chart segment or date",
+            });
+        }
+
+        console.error("Error fetching chart data:", err);
+        res.status(500).json({
+            success: false,
+            status: "error",
+            message: "Internal server error",
+        });
+    }
+};
+
 const sendManualPlantData = async (req, res) => {
     try {
         const metrics = {};
@@ -381,5 +453,6 @@ module.exports = {
     getMonthly,
     getYearly,
     getLifetime,
+    getChart,
     sendManualPlantData,
 };
