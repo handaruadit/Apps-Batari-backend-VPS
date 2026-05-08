@@ -151,6 +151,9 @@ MQTT_PASSWORD=
 MOCK_PLANT_ENABLED=false
 MOCK_PLANT_NAME=Plant Testing
 MOCK_PLANT_INTERVAL_MS=300000
+
+MOCK_CHART_ENABLED=false
+MOCK_CHART_POINTS_PER_DAY=180
 ```
 
 Ganti:
@@ -260,7 +263,48 @@ pm2 logs apps-batari-backend --lines 100
 pm2 restart apps-batari-backend
 ```
 
-## 14. Update backend setelah push terbaru
+## 14. Dummy chart fallback untuk demo
+
+Fitur ini hanya mengirim dummy chart sebagai response API saat data chart kosong. Backend tetap mencoba mengambil data real dari PostgreSQL terlebih dahulu, tidak membuat MQTT publisher baru, dan tidak insert dummy ke database.
+
+Aktifkan di VPS:
+
+```bash
+nano .env
+```
+
+Isi atau ubah:
+
+```env
+MOCK_CHART_ENABLED=true
+MOCK_CHART_POINTS_PER_DAY=180
+```
+
+Restart backend:
+
+```bash
+pm2 restart apps-batari-backend
+```
+
+Matikan lagi:
+
+```bash
+nano .env
+```
+
+Ubah:
+
+```env
+MOCK_CHART_ENABLED=false
+```
+
+Restart backend:
+
+```bash
+pm2 restart apps-batari-backend
+```
+
+## 15. Update backend setelah push terbaru
 
 ```bash
 cd ~/apps/Apps-Batari-backend-VPS
@@ -269,7 +313,7 @@ npm install
 pm2 restart apps-batari-backend
 ```
 
-## 15. Deploy memakai script opsional
+## 16. Deploy memakai script opsional
 
 Setelah `.env` dan database siap, script ini bisa dipakai untuk install dependency dan start/restart PM2:
 
@@ -286,7 +330,7 @@ Script ini aman untuk deploy ulang karena:
 - tidak menjalankan `git reset --hard`
 - menolak lanjut jika `.env` masih berisi placeholder
 
-## 16. Environment variable yang dipakai backend
+## 17. Environment variable yang dipakai backend
 
 Wajib untuk VPS:
 
@@ -309,6 +353,8 @@ Opsional:
 - `MOCK_PLANT_ENABLED`
 - `MOCK_PLANT_NAME`
 - `MOCK_PLANT_INTERVAL_MS`
+- `MOCK_CHART_ENABLED`
+- `MOCK_CHART_POINTS_PER_DAY`
 
 Untuk VPS ini gunakan Mosquitto lokal:
 

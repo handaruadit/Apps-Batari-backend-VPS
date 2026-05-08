@@ -3,8 +3,11 @@ const { getIO } = require("../sockets/socket");
 const { saveDeviceData } = require("./data.service");
 
 const DEFAULT_PLANT_NAME = process.env.MOCK_PLANT_NAME || "Plant Testing";
+const DEFAULT_PLANT_ID = process.env.MOCK_PLANT_ID || "1";
 const TIME_ONLY_REGEX = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/;
 const AUTO_SEND_INTERVAL_MS = Number(process.env.MOCK_PLANT_INTERVAL_MS || 300000);
+const AUTO_SEND_INTERVAL_MINUTES = 5;
+const AUTO_SEND_TIME_ZONE = "Asia/Jakarta";
 
 let autoSenderStarted = false;
 let autoSenderState = null;
@@ -14,6 +17,88 @@ const round2 = (value) => Number(Number(value).toFixed(2));
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const randomBetween = (min, max, random = Math.random) =>
   min + (max - min) * random();
+const padTwo = (value) => String(value).padStart(2, "0");
+
+const getJakartaParts = (date = new Date()) => {
+  const jakartaDate = new Date(date.getTime() + 7 * 60 * 60 * 1000);
+
+  return {
+    year: jakartaDate.getUTCFullYear(),
+    month: jakartaDate.getUTCMonth() + 1,
+    day: jakartaDate.getUTCDate(),
+    hour: jakartaDate.getUTCHours(),
+    minute: jakartaDate.getUTCMinutes(),
+    second: jakartaDate.getUTCSeconds(),
+  };
+};
+
+const formatLocalTimestamp = ({
+  year,
+  month,
+  day,
+  hour = 0,
+  minute = 0,
+  second = 0,
+}) =>
+  `${year}-${padTwo(month)}-${padTwo(day)} ${padTwo(hour)}:${padTwo(
+    minute
+  )}:${padTwo(second)}`;
+
+const addLocalMinutes = (parts, minutesToAdd) => {
+  const timestamp = Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute + minutesToAdd,
+    parts.second || 0,
+    0
+  );
+  const date = new Date(timestamp);
+
+  return {
+    year: date.getUTCFullYear(),
+    month: date.getUTCMonth() + 1,
+    day: date.getUTCDate(),
+    hour: date.getUTCHours(),
+    minute: date.getUTCMinutes(),
+    second: date.getUTCSeconds(),
+  };
+};
+
+const getCurrentJakartaBucket = () => {
+  const parts = getJakartaParts();
+
+  return {
+    ...parts,
+    minute:
+      Math.floor(parts.minute / AUTO_SEND_INTERVAL_MINUTES) *
+      AUTO_SEND_INTERVAL_MINUTES,
+    second: 0,
+  };
+};
+
+const getTodayJakartaBuckets = () => {
+  const nowBucket = getCurrentJakartaBucket();
+  const buckets = [];
+  let cursor = {
+    year: nowBucket.year,
+    month: nowBucket.month,
+    day: nowBucket.day,
+    hour: 0,
+    minute: 0,
+    second: 0,
+  };
+
+  while (
+    formatLocalTimestamp(cursor) <= formatLocalTimestamp(nowBucket)
+  ) {
+    buckets.push(cursor);
+    cursor = addLocalMinutes(cursor, AUTO_SEND_INTERVAL_MINUTES);
+  }
+
+  return buckets;
+};
 
 const parseRequestedTimestamp = ({
   timestamp,
@@ -129,6 +214,18 @@ const getTargetPlant = async ({ plantId, plantName = DEFAULT_PLANT_NAME } = {}) 
   }
 
   return fallback;
+};
+
+const getAutomaticTargetPlant = async () => {
+  try {
+    return await getTargetPlant({ plantId: DEFAULT_PLANT_ID });
+  } catch (err) {
+    if (err.message !== "Plant_Not_Found") {
+      throw err;
+    }
+
+    return getTargetPlant({ plantName: DEFAULT_PLANT_NAME });
+  }
 };
 
 const ensureTargetDeviceId = async ({ plantId, deviceId }) => {
@@ -334,6 +431,44 @@ const buildManualPlantDataRows = (deviceId, metrics, timestamp = new Date()) => 
   },
 ];
 
+const buildAutomaticDeviceDataRows = (deviceId, metrics, createdAt) => [
+  {
+    deviceId,
+    category: "pv",
+    type: "chargePower",
+    value: round2(metrics.production),
+    createdAt,
+  },
+  {
+    deviceId,
+    category: "out",
+    type: "power",
+    value: round2(metrics.load),
+    createdAt,
+  },
+  {
+    deviceId,
+    category: "out",
+    type: "vaPower",
+    value: round2(metrics.upsLoad),
+    createdAt,
+  },
+  {
+    deviceId,
+    category: "grid",
+    type: "power",
+    value: round2(metrics.grid),
+    createdAt,
+  },
+  {
+    deviceId,
+    category: "baterai",
+    type: "power",
+    value: round2(metrics.battery),
+    createdAt,
+  },
+];
+
 const emitRealtimeRows = (deviceId, rows) => {
   try {
     const io = getIO();
@@ -342,7 +477,10 @@ const emitRealtimeRows = (deviceId, rows) => {
       "mqtt_message",
       rows.map(({ createdAt, ...row }) => ({
         ...row,
-        timestamp: createdAt.getTime(),
+        timestamp:
+          createdAt instanceof Date
+            ? createdAt.getTime()
+            : new Date(String(createdAt).replace(" ", "T")).getTime(),
       }))
     );
   } catch (err) {
@@ -353,6 +491,44 @@ const emitRealtimeRows = (deviceId, rows) => {
 const persistAndEmitRows = async (deviceId, rows) => {
   await saveDeviceData(rows);
   emitRealtimeRows(deviceId, rows);
+};
+
+const getRowKey = (row) => `${row.category}:${row.type}`;
+
+const persistAutomaticRowsForBucket = async (deviceId, rows, bucketStart) => {
+  const bucketEnd = formatLocalTimestamp(
+    addLocalMinutes(bucketStart, AUTO_SEND_INTERVAL_MINUTES)
+  );
+  const bucketStartText = formatLocalTimestamp(bucketStart);
+  const existingRows = await db("device_data")
+    .select("category", "type")
+    .where("device_id", deviceId)
+    .where("created_at", ">=", bucketStartText)
+    .where("created_at", "<", bucketEnd)
+    .whereIn(
+      "category",
+      Array.from(new Set(rows.map((row) => row.category)))
+    )
+    .whereIn("type", Array.from(new Set(rows.map((row) => row.type))));
+  const existingKeys = new Set(existingRows.map(getRowKey));
+  const rowsToInsert = rows.filter((row) => !existingKeys.has(getRowKey(row)));
+
+  if (!rowsToInsert.length) {
+    return 0;
+  }
+
+  await db("device_data").insert(
+    rowsToInsert.map((row) => ({
+      device_id: row.deviceId,
+      category: row.category,
+      type: row.type,
+      value: row.value,
+      created_at: row.createdAt,
+    }))
+  );
+  emitRealtimeRows(deviceId, rowsToInsert);
+
+  return rowsToInsert.length;
 };
 
 const sendManualPlantData = async ({
@@ -410,6 +586,36 @@ const logAutoSenderState = (state, message) => {
   }
 };
 
+const runAutomaticBucket = async ({ plant, targetDeviceId, bucket }) => {
+  const createdAt = formatLocalTimestamp(bucket);
+  const metrics = buildAutomaticMetrics(
+    new Date(`${createdAt.replace(" ", "T")}+07:00`),
+    {
+      timeZone: plant.timezone || AUTO_SEND_TIME_ZONE,
+    }
+  );
+  const rows = buildAutomaticDeviceDataRows(targetDeviceId, metrics, createdAt);
+
+  return persistAutomaticRowsForBucket(targetDeviceId, rows, bucket);
+};
+
+const runAutomaticBackfill = async ({ plant, targetDeviceId }) => {
+  const buckets = getTodayJakartaBuckets();
+  let insertedRows = 0;
+
+  for (const bucket of buckets) {
+    insertedRows += await runAutomaticBucket({
+      plant,
+      targetDeviceId,
+      bucket,
+    });
+  }
+
+  console.log(
+    `[mock-plant] Backfill hari ini selesai untuk plant ${plant.id}. Bucket: ${buckets.length}, row baru: ${insertedRows}.`
+  );
+};
+
 const runAutomaticCycle = async () => {
   if (autoSenderRunning) {
     return;
@@ -418,22 +624,29 @@ const runAutomaticCycle = async () => {
   autoSenderRunning = true;
 
   try {
-    const plant = await getTargetPlant();
+    const plant = await getAutomaticTargetPlant();
     const targetDeviceId = await ensureTargetDeviceId({
       plantId: plant.id,
     });
-    const timestamp = new Date();
-    const metrics = buildAutomaticMetrics(timestamp, {
-      timeZone: plant.timezone || "Asia/Jakarta",
+    const bucket = getCurrentJakartaBucket();
+    const insertedRows = await runAutomaticBucket({
+      plant,
+      targetDeviceId,
+      bucket,
     });
-    const rows = buildManualPlantDataRows(targetDeviceId, metrics, timestamp);
-
-    await persistAndEmitRows(targetDeviceId, rows);
 
     logAutoSenderState(
       `ready:${plant.id}:${targetDeviceId}`,
-      `[mock-plant] Auto sender aktif untuk plant "${plant.name}" dengan interval ${AUTO_SEND_INTERVAL_MS} ms.`
+      `[mock-plant] Dummy data DB aktif untuk plant "${plant.name}" (${targetDeviceId}) setiap ${AUTO_SEND_INTERVAL_MS} ms.`
     );
+
+    if (insertedRows > 0) {
+      console.log(
+        `[mock-plant] Insert ${insertedRows} row dummy untuk bucket ${formatLocalTimestamp(
+          bucket
+        )} (${AUTO_SEND_TIME_ZONE}).`
+      );
+    }
   } catch (err) {
     if (err.message === "Plant_Not_Found") {
       logAutoSenderState(
@@ -456,7 +669,20 @@ const startAutomaticPlantDataSender = () => {
   }
 
   autoSenderStarted = true;
-  runAutomaticCycle();
+  (async () => {
+    try {
+      const plant = await getAutomaticTargetPlant();
+      const targetDeviceId = await ensureTargetDeviceId({
+        plantId: plant.id,
+      });
+
+      await runAutomaticBackfill({ plant, targetDeviceId });
+    } catch (err) {
+      console.error("[mock-plant] Backfill dummy gagal:", err.message);
+    } finally {
+      runAutomaticCycle();
+    }
+  })();
   setInterval(runAutomaticCycle, AUTO_SEND_INTERVAL_MS);
 };
 

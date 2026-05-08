@@ -322,16 +322,29 @@ const getChart = async (req, res) => {
             });
         }
 
-        const data = await getChartData({
+        const chartResult = await getChartData({
+            plantId,
             deviceIds: deviceIds.map((d) => d.device_id),
             segment,
             date,
         });
 
+        console.log("Chart data response:", {
+            userId,
+            plantId,
+            segment,
+            date,
+            range: chartResult.range,
+            source: chartResult.source,
+            rowCount: chartResult.rowCount,
+            counts: chartResult.counts,
+        });
+
         res.json({
             success: true,
             status: "success",
-            data,
+            source: chartResult.source,
+            data: chartResult.data,
         });
     } catch (err) {
         if (err.message === "Access_Denied") {
