@@ -442,50 +442,172 @@ const getDeviceData = async (filters) => {
   }
 };
 
+const ENERGY_TIME_ZONE = "Asia/Jakarta";
+
 const getNumberOrNull = (value) => {
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 };
 
-const findLatestMetricValue = (rows, categoryAliases, typeAliases) => {
-  const row = rows.find(
-    (item) =>
-      matchesAlias(item.category, categoryAliases) &&
-      matchesAlias(item.type, typeAliases),
-  );
+const getTimeZoneDateParts = (date = new Date(), timeZone = ENERGY_TIME_ZONE) => {
+  const formatter = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const parts = formatter.formatToParts(date);
 
-  return row ? getNumberOrNull(row.value) : null;
+  return {
+    year: parts.find((part) => part.type === "year")?.value,
+    month: parts.find((part) => part.type === "month")?.value,
+    day: parts.find((part) => part.type === "day")?.value,
+  };
 };
 
-const buildEnergyPayload = ({ pvKw, batteryKw, gridKw }) => {
-  const consumptionKwh = roundTwo((pvKw ?? 0) * 1);
-  const batteryKwh = roundTwo((batteryKw ?? 0) * 1);
-  const gridKwh = roundTwo((gridKw ?? 0) * 1);
-  const totalKwh = roundTwo(consumptionKwh + batteryKwh + gridKwh);
+const getTodayEnergyDateRange = () => {
+  const { year, month, day } = getTimeZoneDateParts();
+  const dateText = `${year}-${month}-${day}`;
+
+  return {
+    start: `${dateText} 00:00:00`,
+    end: `${dateText} 23:59:59.999`,
+  };
+};
+
+const getRowTimestamp = (row) => {
+  const value = row?.created_at;
+  const date =
+    value instanceof Date
+      ? value
+      : new Date(String(value ?? "").replace(" ", "T"));
+
+  return Number.isNaN(date.getTime()) ? null : date.getTime();
+};
+
+const getMetricRows = (rows, categoryAliases, typeAliases) =>
+  rows.filter(
+    (item) =>
+      matchesAlias(item.category, categoryAliases) &&
+      matchesAlias(item.type, typeAliases) &&
+      getNumberOrNull(item.value) !== null &&
+      getRowTimestamp(item) !== null,
+  );
+
+const chooseEnergyRows = (
+  rows,
+  categoryAliases,
+  preferredTypeAliases,
+  fallbackTypeAliases,
+) => {
+  const preferredRows = getMetricRows(
+    rows,
+    categoryAliases,
+    preferredTypeAliases,
+  );
+
+  if (!fallbackTypeAliases) {
+    return preferredRows;
+  }
+
+  const fallbackRows = getMetricRows(rows, categoryAliases, fallbackTypeAliases);
+
+  if (preferredRows.length >= 2 || fallbackRows.length === 0) {
+    return preferredRows;
+  }
+
+  if (fallbackRows.length >= 2) {
+    return fallbackRows;
+  }
+
+  return preferredRows.length ? preferredRows : fallbackRows;
+};
+
+const integrateRowsToKwh = (rows) => {
+  if (!Array.isArray(rows) || rows.length < 2) {
+    return 0;
+  }
+
+  const rowsByDevice = rows.reduce((items, row) => {
+    const key = row.device_id || "unknown";
+
+    if (!items[key]) {
+      items[key] = [];
+    }
+
+    items[key].push(row);
+    return items;
+  }, {});
+
+  const total = Object.values(rowsByDevice).reduce((sum, deviceRows) => {
+    const sortedRows = deviceRows
+      .map((row) => ({
+        value: getNumberOrNull(row.value),
+        timestamp: getRowTimestamp(row),
+        id: Number(row.id || 0),
+      }))
+      .filter(
+        (row) => row.value !== null && row.timestamp !== null,
+      )
+      .sort((left, right) => left.timestamp - right.timestamp || left.id - right.id);
+
+    if (sortedRows.length < 2) {
+      return sum;
+    }
+
+    let deviceKwh = 0;
+
+    for (let index = 1; index < sortedRows.length; index += 1) {
+      const previous = sortedRows[index - 1];
+      const current = sortedRows[index];
+      const intervalHours = (current.timestamp - previous.timestamp) / 3600000;
+
+      if (!Number.isFinite(intervalHours) || intervalHours <= 0) {
+        continue;
+      }
+
+      deviceKwh += ((previous.value + current.value) / 2) * intervalHours;
+    }
+
+    return sum + deviceKwh;
+  }, 0);
+
+  return Number.isFinite(total) ? roundTwo(total) : 0;
+};
+
+const buildEnergyPayload = ({ consumptionKwh, batteryKwh, gridKwh }) => {
+  const safeConsumptionKwh = roundTwo(consumptionKwh || 0);
+  const safeBatteryKwh = roundTwo(batteryKwh || 0);
+  const safeGridKwh = roundTwo(gridKwh || 0);
+  const totalKwh = roundTwo(
+    safeConsumptionKwh + safeBatteryKwh + safeGridKwh,
+  );
   const hasTotal = totalKwh !== 0;
 
   return {
     energy: {
-      consumptionKwh,
-      batteryKwh,
-      gridKwh,
+      consumptionKwh: safeConsumptionKwh,
+      batteryKwh: safeBatteryKwh,
+      gridKwh: safeGridKwh,
       totalKwh,
     },
     energyPercent: {
-      batteryPercent: hasTotal ? roundTwo((batteryKwh / totalKwh) * 100) : 0,
-      consumptionPercent: hasTotal
-        ? roundTwo((consumptionKwh / totalKwh) * 100)
+      batteryPercent: hasTotal
+        ? roundTwo((safeBatteryKwh / totalKwh) * 100)
         : 0,
-      gridPercent: hasTotal ? roundTwo((gridKwh / totalKwh) * 100) : 0,
+      consumptionPercent: hasTotal
+        ? roundTwo((safeConsumptionKwh / totalKwh) * 100)
+        : 0,
+      gridPercent: hasTotal ? roundTwo((safeGridKwh / totalKwh) * 100) : 0,
     },
   };
 };
 
 const getLatestEnergyData = async ({ deviceIds }) => {
   const emptyEnergy = buildEnergyPayload({
-    pvKw: 0,
-    batteryKw: 0,
-    gridKw: 0,
+    consumptionKwh: 0,
+    batteryKwh: 0,
+    gridKwh: 0,
   });
 
   if (!Array.isArray(deviceIds) || deviceIds.length === 0) {
@@ -495,37 +617,39 @@ const getLatestEnergyData = async ({ deviceIds }) => {
   try {
     const categories = Object.values(CHART_CATEGORY_ALIASES).flat();
     const types = Object.values(CHART_TYPE_ALIASES).flat();
+    const { start, end } = getTodayEnergyDateRange();
     const rows = await db("device_data")
       .select("id", "device_id", "category", "type", "value", "created_at")
       .whereIn("device_id", deviceIds)
       .whereIn("category", categories)
       .whereIn("type", types)
-      .orderBy("id", "desc")
-      .limit(
-        Math.max(200, categories.length * types.length * deviceIds.length * 5),
-      );
-    const pvChargeKw = findLatestMetricValue(
+      .whereBetween("created_at", [start, end])
+      .orderBy([
+        { column: "created_at", order: "asc" },
+        { column: "id", order: "asc" },
+      ]);
+    const pvRows = chooseEnergyRows(
       rows,
       CHART_CATEGORY_ALIASES.pv,
       CHART_TYPE_ALIASES.chargePower,
-    );
-    const pvPowerKw = findLatestMetricValue(
-      rows,
-      CHART_CATEGORY_ALIASES.pv,
       CHART_TYPE_ALIASES.power,
     );
 
     return buildEnergyPayload({
-      pvKw: pvChargeKw ?? pvPowerKw,
-      batteryKw: findLatestMetricValue(
-        rows,
-        CHART_CATEGORY_ALIASES.battery,
-        CHART_TYPE_ALIASES.power,
+      consumptionKwh: integrateRowsToKwh(pvRows),
+      batteryKwh: integrateRowsToKwh(
+        chooseEnergyRows(
+          rows,
+          CHART_CATEGORY_ALIASES.battery,
+          CHART_TYPE_ALIASES.power,
+        ),
       ),
-      gridKw: findLatestMetricValue(
-        rows,
-        CHART_CATEGORY_ALIASES.grid,
-        CHART_TYPE_ALIASES.power,
+      gridKwh: integrateRowsToKwh(
+        chooseEnergyRows(
+          rows,
+          CHART_CATEGORY_ALIASES.grid,
+          CHART_TYPE_ALIASES.power,
+        ),
       ),
     });
   } catch (err) {
