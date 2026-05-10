@@ -5,6 +5,7 @@ const {
     getYearlyData, 
     getLifetimeData, 
     getChartData,
+    getLatestEnergyData,
     getDeviceIdData } = require("../services/data.service");
 const {
     sendManualPlantData: sendManualPlantDataService,
@@ -76,6 +77,9 @@ const fetchDeviceData = async (req, res) => {
             latestBy,
             limit: limit ? parseInt(limit) : undefined,
         });
+        const latestEnergy = await getLatestEnergyData({
+            deviceIds: deviceIds.map((d) => d.device_id),
+        });
 
         const formatted = data.reduce((accumulator, currentItem) => {
             const cat = currentItem.category;
@@ -90,6 +94,7 @@ const fetchDeviceData = async (req, res) => {
             status: "success",
             count: data.length,
             data: formatted,
+            ...latestEnergy,
         });
 
     } catch (err) {

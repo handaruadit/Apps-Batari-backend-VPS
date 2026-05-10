@@ -442,6 +442,98 @@ const getDeviceData = async (filters) => {
   }
 };
 
+const getNumberOrNull = (value) => {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+};
+
+const findLatestMetricValue = (rows, categoryAliases, typeAliases) => {
+  const row = rows.find(
+    (item) =>
+      matchesAlias(item.category, categoryAliases) &&
+      matchesAlias(item.type, typeAliases),
+  );
+
+  return row ? getNumberOrNull(row.value) : null;
+};
+
+const buildEnergyPayload = ({ pvKw, batteryKw, gridKw }) => {
+  const consumptionKwh = roundTwo((pvKw ?? 0) * 1);
+  const batteryKwh = roundTwo((batteryKw ?? 0) * 1);
+  const gridKwh = roundTwo((gridKw ?? 0) * 1);
+  const totalKwh = roundTwo(consumptionKwh + batteryKwh + gridKwh);
+  const hasTotal = totalKwh !== 0;
+
+  return {
+    energy: {
+      consumptionKwh,
+      batteryKwh,
+      gridKwh,
+      totalKwh,
+    },
+    energyPercent: {
+      batteryPercent: hasTotal ? roundTwo((batteryKwh / totalKwh) * 100) : 0,
+      consumptionPercent: hasTotal
+        ? roundTwo((consumptionKwh / totalKwh) * 100)
+        : 0,
+      gridPercent: hasTotal ? roundTwo((gridKwh / totalKwh) * 100) : 0,
+    },
+  };
+};
+
+const getLatestEnergyData = async ({ deviceIds }) => {
+  const emptyEnergy = buildEnergyPayload({
+    pvKw: 0,
+    batteryKw: 0,
+    gridKw: 0,
+  });
+
+  if (!Array.isArray(deviceIds) || deviceIds.length === 0) {
+    return emptyEnergy;
+  }
+
+  try {
+    const categories = Object.values(CHART_CATEGORY_ALIASES).flat();
+    const types = Object.values(CHART_TYPE_ALIASES).flat();
+    const rows = await db("device_data")
+      .select("id", "device_id", "category", "type", "value", "created_at")
+      .whereIn("device_id", deviceIds)
+      .whereIn("category", categories)
+      .whereIn("type", types)
+      .orderBy("id", "desc")
+      .limit(
+        Math.max(200, categories.length * types.length * deviceIds.length * 5),
+      );
+    const pvChargeKw = findLatestMetricValue(
+      rows,
+      CHART_CATEGORY_ALIASES.pv,
+      CHART_TYPE_ALIASES.chargePower,
+    );
+    const pvPowerKw = findLatestMetricValue(
+      rows,
+      CHART_CATEGORY_ALIASES.pv,
+      CHART_TYPE_ALIASES.power,
+    );
+
+    return buildEnergyPayload({
+      pvKw: pvChargeKw ?? pvPowerKw,
+      batteryKw: findLatestMetricValue(
+        rows,
+        CHART_CATEGORY_ALIASES.battery,
+        CHART_TYPE_ALIASES.power,
+      ),
+      gridKw: findLatestMetricValue(
+        rows,
+        CHART_CATEGORY_ALIASES.grid,
+        CHART_TYPE_ALIASES.power,
+      ),
+    });
+  } catch (err) {
+    console.error("Error building latest energy data:", err.message);
+    return emptyEnergy;
+  }
+};
+
 // Fungsi Ambil Data Harian untuk Dashboard
 const getDailyData = async ({ deviceId, date, category, types }) => {
     const start = new Date(date + "T00:00:00");
@@ -662,6 +754,7 @@ module.exports = {
     getYearlyData,
     getLifetimeData,
     getChartData,
+    getLatestEnergyData,
     // formatByType,
     checkDeviceAccess,
     getDeviceIdData,
