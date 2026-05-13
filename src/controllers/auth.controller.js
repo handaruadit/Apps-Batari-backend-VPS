@@ -10,6 +10,12 @@ const validateEmail = (email) => {
   return typeof email === "string" && /^\S+@\S+\.\S+$/.test(email);
 };
 
+const RESET_SEND_FAILED_MESSAGE =
+  "Gagal mengirim kode reset password. Silakan coba lagi.";
+const RESET_VERIFY_FAILED_MESSAGE = "Kode salah atau sudah kedaluwarsa.";
+const RESET_UPDATE_FAILED_MESSAGE =
+  "Password gagal diperbarui. Silakan coba lagi.";
+
 const validateRegisterData = ({ email, password, phone }) => {
   if (!email) return { status: 400, message: "Email is required" };
   if (!validateEmail(email)) return { status: 422, message: "Invalid email format" };
@@ -108,15 +114,27 @@ const forgotPassword = async (req, res) => {
   } catch (err) {
     console.error("[auth] forgot password failed", err);
     if (err.message === "Account not found") {
-      return res.status(404).json({ status: "error", success: false, message: err.message });
+      return res.status(404).json({
+        status: "error",
+        success: false,
+        message: RESET_SEND_FAILED_MESSAGE,
+      });
     }
     if (
       err.message === "Email sender is not configured" ||
       err.message === "WhatsApp sender is not configured"
     ) {
-      return res.status(503).json({ status: "error", success: false, message: err.message });
+      return res.status(503).json({
+        status: "error",
+        success: false,
+        message: RESET_SEND_FAILED_MESSAGE,
+      });
     }
-    res.status(500).json({ status: "error", success: false, message: err.message });
+    res.status(500).json({
+      status: "error",
+      success: false,
+      message: RESET_SEND_FAILED_MESSAGE,
+    });
   }
 };
 
@@ -130,10 +148,19 @@ const verifyResetCode = async (req, res) => {
     await verifyPasswordResetCode(req.body);
     res.json({ status: "success", success: true, message: "Code verified" });
   } catch (err) {
+    console.error("[auth] verify reset code failed", err);
     if (err.message === "Invalid or expired code") {
-      return res.status(400).json({ status: "error", success: false, message: err.message });
+      return res.status(400).json({
+        status: "error",
+        success: false,
+        message: RESET_VERIFY_FAILED_MESSAGE,
+      });
     }
-    res.status(500).json({ status: "error", success: false, message: err.message });
+    res.status(500).json({
+      status: "error",
+      success: false,
+      message: RESET_VERIFY_FAILED_MESSAGE,
+    });
   }
 };
 
@@ -147,10 +174,19 @@ const updatePassword = async (req, res) => {
     await resetPassword(req.body);
     res.json({ status: "success", success: true, message: "Password updated successfully" });
   } catch (err) {
+    console.error("[auth] reset password failed", err);
     if (err.message === "Invalid or expired code") {
-      return res.status(400).json({ status: "error", success: false, message: err.message });
+      return res.status(400).json({
+        status: "error",
+        success: false,
+        message: RESET_VERIFY_FAILED_MESSAGE,
+      });
     }
-    res.status(500).json({ status: "error", success: false, message: err.message });
+    res.status(500).json({
+      status: "error",
+      success: false,
+      message: RESET_UPDATE_FAILED_MESSAGE,
+    });
   }
 };
 

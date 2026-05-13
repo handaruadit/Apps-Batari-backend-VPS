@@ -41,43 +41,6 @@ const loginUser = async ({ email, password }) => {
   return { token, user };
 };
 
-const ensurePasswordResetTable = async () => {
-  await db.raw(`
-    CREATE TABLE IF NOT EXISTS password_reset_codes (
-      id bigserial PRIMARY KEY,
-      user_id uuid REFERENCES users(id) ON DELETE CASCADE,
-      email text NOT NULL,
-      phone text,
-      method text NOT NULL DEFAULT 'email',
-      code_hash text NOT NULL,
-      expires_at timestamp with time zone NOT NULL,
-      used_at timestamp with time zone,
-      verified_at timestamp with time zone,
-      created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  await db.raw(`
-    ALTER TABLE password_reset_codes
-      ADD COLUMN IF NOT EXISTS phone text
-  `);
-
-  await db.raw(`
-    ALTER TABLE password_reset_codes
-      ADD COLUMN IF NOT EXISTS method text NOT NULL DEFAULT 'email'
-  `);
-
-  await db.raw(`
-    CREATE INDEX IF NOT EXISTS idx_password_reset_codes_email_created
-      ON password_reset_codes (email, created_at DESC)
-  `);
-
-  await db.raw(`
-    CREATE INDEX IF NOT EXISTS idx_password_reset_codes_phone_created
-      ON password_reset_codes (phone, created_at DESC)
-  `);
-};
-
 const createResetCode = () => {
   return String(crypto.randomInt(0, 1000000)).padStart(6, "0");
 };
@@ -228,8 +191,6 @@ const getResetIdentity = ({ method = "email", email, phone }) => {
 };
 
 const requestPasswordReset = async ({ method = "email", email, phone }) => {
-  await ensurePasswordResetTable();
-
   const identity = getResetIdentity({ method, email, phone });
   const user = await db("users").where(identity.lookup).first();
   if (!user) {
@@ -270,7 +231,6 @@ const requestPasswordReset = async ({ method = "email", email, phone }) => {
 };
 
 const getLatestResetRecord = async ({ method = "email", email, phone }) => {
-  await ensurePasswordResetTable();
   const identity = getResetIdentity({ method, email, phone });
 
   return db("password_reset_codes")
