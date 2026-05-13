@@ -119,8 +119,17 @@ File ini akan membuat tabel jika belum ada:
 - `user_plants`
 - `plant_devices`
 - `device_data`
+- `password_reset_codes`
 
 File ini juga mengaktifkan `pgcrypto` untuk `gen_random_uuid()` dan membuat index yang dibutuhkan query data.
+
+Jika tabel lain sudah ada dan hanya perlu menambahkan tabel Forgot Password tanpa menyentuh setup lain, jalankan script khusus ini:
+
+```bash
+sudo -u postgres psql -d apidb -f scripts/setup-password-reset-codes.sql
+```
+
+Script tersebut hanya membuat `password_reset_codes` jika belum ada, menyesuaikan tipe `user_id` dengan `users.id`, membuat index reset code, dan memberi permission ke user database aplikasi. Jika `DB_USER` di `.env` bukan `apiuser`, ganti nama user pada bagian `GRANT` di script sebelum dijalankan.
 
 ## 7. Buat file `.env` di VPS
 
