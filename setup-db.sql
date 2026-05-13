@@ -51,11 +51,30 @@ CREATE TABLE IF NOT EXISTS device_data (
   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS password_reset_codes (
+  id bigserial PRIMARY KEY,
+  user_id uuid REFERENCES users(id) ON DELETE CASCADE,
+  email text NOT NULL,
+  phone text,
+  method text NOT NULL DEFAULT 'email',
+  code_hash text NOT NULL,
+  expires_at timestamp with time zone NOT NULL,
+  used_at timestamp with time zone,
+  verified_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_device_data_device_created
   ON device_data (device_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_device_data_filter
   ON device_data (device_id, category, type, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_password_reset_codes_email_created
+  ON password_reset_codes (email, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_password_reset_codes_phone_created
+  ON password_reset_codes (phone, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_user_plants_user_id
   ON user_plants (user_id);
