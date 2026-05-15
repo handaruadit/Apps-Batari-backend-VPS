@@ -5,7 +5,7 @@ const {
 } = require("./mockPlantData.service");
 
 describe("mockPlantData.service", () => {
-  it("builds six telemetry rows that match the frontend mapping", () => {
+  it("builds nine telemetry rows that match the frontend mapping", () => {
     const timestamp = new Date("2026-04-27T05:00:00.000Z");
     const rows = buildManualPlantDataRows(
       "mock-device-1",
@@ -14,13 +14,16 @@ describe("mockPlantData.service", () => {
         battery: -1.2,
         grid: 0.8,
         production: 3.75,
+        pvGenerate: 4.1,
+        export: 0.9,
+        charge: 1.3,
         upsLoad: 2.4,
         load: 1.9,
       },
       timestamp
     );
 
-    expect(rows).toHaveLength(6);
+    expect(rows).toHaveLength(9);
     expect(rows).toEqual([
       expect.objectContaining({
         deviceId: "mock-device-1",
@@ -51,6 +54,21 @@ describe("mockPlantData.service", () => {
       expect.objectContaining({
         category: "out",
         type: "power",
+        createdAt: timestamp,
+      }),
+      expect.objectContaining({
+        category: "production",
+        type: "pvGenerate",
+        createdAt: timestamp,
+      }),
+      expect.objectContaining({
+        category: "production",
+        type: "export",
+        createdAt: timestamp,
+      }),
+      expect.objectContaining({
+        category: "production",
+        type: "charge",
         createdAt: timestamp,
       }),
     ]);
@@ -87,7 +105,13 @@ describe("mockPlantData.service", () => {
 
     expect(midday.production).toBeGreaterThan(0);
     expect(midday.pv).toBeGreaterThanOrEqual(midday.production);
+    expect(midday.pvGenerate).toBeGreaterThan(0);
+    expect(midday.charge).toBeGreaterThan(0);
     expect(night.production).toBe(0);
     expect(night.pv).toBe(0);
+    expect(night.pvGenerate).toBe(0);
+    expect(night.export).toBe(0);
+    expect(night.charge).toBe(0);
   });
 });
+

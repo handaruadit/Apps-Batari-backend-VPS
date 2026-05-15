@@ -19,12 +19,16 @@ const CHART_CATEGORY_ALIASES = {
   grid: ["grid"],
   battery: ["battery", "baterai"],
   load: ["load", "out"],
+  productionFlow: ["production", "productionFlow", "production_flow"],
 };
 
 const CHART_TYPE_ALIASES = {
   power: ["power"],
   chargePower: ["chargePower", "charge_power", "chargepower"],
   vaPower: ["vaPower", "va_power", "vapower"],
+  pvGenerate: ["pvGenerate", "pv_generate", "pvgenerate"],
+  export: ["export", "exportPower", "export_power", "exportpower"],
+  charge: ["charge", "chargePowerOut", "charge_power_out", "chargepowerout"],
 };
 
 const CHART_ALLOWED_SEGMENTS = ["day", "month", "year", "lifetime"];
@@ -35,9 +39,13 @@ const CHART_SERIES_CONFIG = {
   upsLoad: { category: "out", type: "vaPower" },
   grid: { category: "grid", type: "power" },
   battery: { category: "baterai", type: "power" },
+  pvGenerate: { category: "production", type: "pvGenerate" },
+  export: { category: "production", type: "export" },
+  charge: { category: "production", type: "charge" },
 };
 
 const DEFAULT_MOCK_CHART_POINTS_PER_DAY = 180;
+const MOCK_CHART_SERIES_KEYS = ["production", "load", "upsLoad", "grid", "battery"];
 
 const normalizeText = (value) =>
   String(value ?? "")
@@ -146,6 +154,9 @@ const buildChartSeries = (rows) => {
   const upsLoadRows = [];
   const gridRows = [];
   const batteryRows = [];
+  const pvGenerateRows = [];
+  const exportRows = [];
+  const chargeRows = [];
 
   rows.forEach((row) => {
     const formattedRow = formatChartRow(row);
@@ -187,6 +198,20 @@ const buildChartSeries = (rows) => {
     ) {
       batteryRows.push(formattedRow);
     }
+
+    if (matchesAlias(row.category, CHART_CATEGORY_ALIASES.productionFlow)) {
+      if (matchesAlias(row.type, CHART_TYPE_ALIASES.pvGenerate)) {
+        pvGenerateRows.push(formattedRow);
+      }
+
+      if (matchesAlias(row.type, CHART_TYPE_ALIASES.export)) {
+        exportRows.push(formattedRow);
+      }
+
+      if (matchesAlias(row.type, CHART_TYPE_ALIASES.charge)) {
+        chargeRows.push(formattedRow);
+      }
+    }
   });
 
   return {
@@ -195,6 +220,9 @@ const buildChartSeries = (rows) => {
     upsLoad: upsLoadRows.length ? upsLoadRows : loadRows,
     grid: gridRows,
     battery: batteryRows,
+    pvGenerate: pvGenerateRows,
+    export: exportRows,
+    charge: chargeRows,
   };
 };
 
@@ -357,6 +385,11 @@ const buildMockChartSeries = ({ plantId, segment, date }) => {
   const series = {};
 
   Object.entries(CHART_SERIES_CONFIG).forEach(([seriesKey, config]) => {
+    if (!MOCK_CHART_SERIES_KEYS.includes(seriesKey)) {
+      series[seriesKey] = [];
+      return;
+    }
+
     const random = createSeededRandom(`${plantId}:${segment}:${date || ""}:${seriesKey}`);
 
     series[seriesKey] = points.map((point) => ({
@@ -575,14 +608,28 @@ const integrateRowsToKwh = (rows) => {
   return Number.isFinite(total) ? roundTwo(total) : 0;
 };
 
-const buildEnergyPayload = ({ consumptionKwh, batteryKwh, gridKwh }) => {
+const buildEnergyPayload = ({
+  consumptionKwh,
+  batteryKwh,
+  gridKwh,
+  pvGenerateKwh = 0,
+  exportKwh = 0,
+  chargeKwh = 0,
+}) => {
   const safeConsumptionKwh = roundTwo(consumptionKwh || 0);
   const safeBatteryKwh = roundTwo(batteryKwh || 0);
   const safeGridKwh = roundTwo(gridKwh || 0);
+  const safePvGenerateKwh = roundTwo(pvGenerateKwh || 0);
+  const safeExportKwh = roundTwo(exportKwh || 0);
+  const safeChargeKwh = roundTwo(chargeKwh || 0);
   const totalKwh = roundTwo(
     safeConsumptionKwh + safeBatteryKwh + safeGridKwh,
   );
+  const totalProductionKwh = roundTwo(
+    safePvGenerateKwh + safeExportKwh + safeChargeKwh,
+  );
   const hasTotal = totalKwh !== 0;
+  const hasProductionTotal = totalProductionKwh !== 0;
 
   return {
     energy: {
@@ -599,6 +646,23 @@ const buildEnergyPayload = ({ consumptionKwh, batteryKwh, gridKwh }) => {
         ? roundTwo((safeConsumptionKwh / totalKwh) * 100)
         : 0,
       gridPercent: hasTotal ? roundTwo((safeGridKwh / totalKwh) * 100) : 0,
+    },
+    productionEnergy: {
+      pvGenerateKwh: safePvGenerateKwh,
+      exportKwh: safeExportKwh,
+      chargeKwh: safeChargeKwh,
+      totalProductionKwh,
+    },
+    productionEnergyPercent: {
+      pvGeneratePercent: hasProductionTotal
+        ? roundTwo((safePvGenerateKwh / totalProductionKwh) * 100)
+        : 0,
+      exportPercent: hasProductionTotal
+        ? roundTwo((safeExportKwh / totalProductionKwh) * 100)
+        : 0,
+      chargePercent: hasProductionTotal
+        ? roundTwo((safeChargeKwh / totalProductionKwh) * 100)
+        : 0,
     },
   };
 };
@@ -649,6 +713,27 @@ const getLatestEnergyData = async ({ deviceIds }) => {
           rows,
           CHART_CATEGORY_ALIASES.grid,
           CHART_TYPE_ALIASES.power,
+        ),
+      ),
+      pvGenerateKwh: integrateRowsToKwh(
+        chooseEnergyRows(
+          rows,
+          CHART_CATEGORY_ALIASES.productionFlow,
+          CHART_TYPE_ALIASES.pvGenerate,
+        ),
+      ),
+      exportKwh: integrateRowsToKwh(
+        chooseEnergyRows(
+          rows,
+          CHART_CATEGORY_ALIASES.productionFlow,
+          CHART_TYPE_ALIASES.export,
+        ),
+      ),
+      chargeKwh: integrateRowsToKwh(
+        chooseEnergyRows(
+          rows,
+          CHART_CATEGORY_ALIASES.productionFlow,
+          CHART_TYPE_ALIASES.charge,
         ),
       ),
     });
@@ -883,3 +968,4 @@ module.exports = {
     checkDeviceAccess,
     getDeviceIdData,
 };
+

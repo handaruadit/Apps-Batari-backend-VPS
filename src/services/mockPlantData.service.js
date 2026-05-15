@@ -375,12 +375,39 @@ const buildAutomaticMetrics = (timestamp = new Date(), options = {}) => {
     -2.2,
     4.6
   );
+  const pvGenerate =
+    daylightFactor > 0
+      ? clamp(
+          production + daylightFactor * randomBetween(0.15, 0.95, random),
+          0,
+          7.4
+        )
+      : 0;
+  const charge =
+    daylightFactor > 0.12
+      ? clamp(
+          Math.max(0, battery) + randomBetween(0.05, 0.45, random),
+          0.05,
+          2.6
+        )
+      : 0;
+  const exportValue =
+    daylightFactor > 0
+      ? clamp(
+          pvGenerate - load - charge + randomBetween(-0.2, 0.35, random),
+          0,
+          4.8
+        )
+      : 0;
 
   return {
     pv: round2(pv),
     battery: round2(battery),
     grid: round2(grid),
     production: round2(production),
+    pvGenerate: round2(pvGenerate),
+    export: round2(exportValue),
+    charge: round2(charge),
     upsLoad: round2(upsLoad),
     load: round2(load),
   };
@@ -429,9 +456,59 @@ const buildManualPlantDataRows = (deviceId, metrics, timestamp = new Date()) => 
     value: round2(metrics.load),
     createdAt: timestamp,
   },
+  {
+    deviceId,
+    category: "production",
+    type: "pvGenerate",
+    value: round2(metrics.pvGenerate ?? metrics.production ?? 0),
+    createdAt: timestamp,
+  },
+  {
+    deviceId,
+    category: "production",
+    type: "export",
+    value: round2(metrics.export ?? 0),
+    createdAt: timestamp,
+  },
+  {
+    deviceId,
+    category: "production",
+    type: "charge",
+    value: round2(metrics.charge ?? Math.max(0, metrics.battery ?? 0)),
+    createdAt: timestamp,
+  },
 ];
 
-const buildAutomaticDeviceDataRows = (deviceId, metrics, createdAt) => [
+const buildProductionFlowRows = (deviceId, metrics, createdAt) => [
+  {
+    deviceId,
+    category: "production",
+    type: "pvGenerate",
+    value: round2(metrics.pvGenerate),
+    createdAt,
+  },
+  {
+    deviceId,
+    category: "production",
+    type: "export",
+    value: round2(metrics.export),
+    createdAt,
+  },
+  {
+    deviceId,
+    category: "production",
+    type: "charge",
+    value: round2(metrics.charge),
+    createdAt,
+  },
+];
+
+const buildAutomaticDeviceDataRows = (
+  deviceId,
+  metrics,
+  createdAt,
+  { includeProductionFlow = true } = {}
+) => [
   {
     deviceId,
     category: "pv",
@@ -467,6 +544,9 @@ const buildAutomaticDeviceDataRows = (deviceId, metrics, createdAt) => [
     value: round2(metrics.battery),
     createdAt,
   },
+  ...(includeProductionFlow
+    ? buildProductionFlowRows(deviceId, metrics, createdAt)
+    : []),
 ];
 
 const emitRealtimeRows = (deviceId, rows) => {
@@ -572,6 +652,9 @@ const sendManualPlantData = async ({
       battery: round2(metrics.battery),
       grid: round2(metrics.grid),
       production: round2(metrics.production),
+      pvGenerate: round2(metrics.pvGenerate ?? metrics.production ?? 0),
+      export: round2(metrics.export ?? 0),
+      charge: round2(metrics.charge ?? Math.max(0, metrics.battery ?? 0)),
       upsLoad: round2(metrics.upsLoad),
       load: round2(metrics.load),
     },
@@ -586,7 +669,12 @@ const logAutoSenderState = (state, message) => {
   }
 };
 
-const runAutomaticBucket = async ({ plant, targetDeviceId, bucket }) => {
+const runAutomaticBucket = async ({
+  plant,
+  targetDeviceId,
+  bucket,
+  includeProductionFlow = true,
+}) => {
   const createdAt = formatLocalTimestamp(bucket);
   const metrics = buildAutomaticMetrics(
     new Date(`${createdAt.replace(" ", "T")}+07:00`),
@@ -594,7 +682,9 @@ const runAutomaticBucket = async ({ plant, targetDeviceId, bucket }) => {
       timeZone: plant.timezone || AUTO_SEND_TIME_ZONE,
     }
   );
-  const rows = buildAutomaticDeviceDataRows(targetDeviceId, metrics, createdAt);
+  const rows = buildAutomaticDeviceDataRows(targetDeviceId, metrics, createdAt, {
+    includeProductionFlow,
+  });
 
   return persistAutomaticRowsForBucket(targetDeviceId, rows, bucket);
 };
@@ -608,6 +698,7 @@ const runAutomaticBackfill = async ({ plant, targetDeviceId }) => {
       plant,
       targetDeviceId,
       bucket,
+      includeProductionFlow: false,
     });
   }
 
@@ -693,3 +784,4 @@ module.exports = {
   sendManualPlantData,
   startAutomaticPlantDataSender,
 };
+
