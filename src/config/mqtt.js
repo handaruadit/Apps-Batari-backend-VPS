@@ -13,6 +13,30 @@ const BMS_POWER_CATEGORY = "baterai";
 const BMS_POWER_TYPE = "power";
 const bmsLatest = {};
 
+const topicMatchesSubscription = (subscription, topic) => {
+  if (!subscription || !topic) return false;
+
+  const subscriptionParts = String(subscription).split("/");
+  const topicParts = String(topic).split("/");
+
+  for (let i = 0; i < subscriptionParts.length; i += 1) {
+    const part = subscriptionParts[i];
+
+    if (part === "#") {
+      return i === subscriptionParts.length - 1;
+    }
+
+    if (part === "+") {
+      if (topicParts[i] === undefined) return false;
+      continue;
+    }
+
+    if (part !== topicParts[i]) return false;
+  }
+
+  return subscriptionParts.length === topicParts.length;
+};
+
 const parseValue = (val) => {
   if (val === null || val === undefined || val === "") return null;
 
@@ -223,7 +247,7 @@ if (bmsClient) {
 
   bmsClient.on("message", async (topic, message) => {
     try {
-      if (topic !== process.env.BMS_MQTT_TOPIC) return;
+      if (!topicMatchesSubscription(BMS_MQTT_TOPIC, topic)) return;
 
       const payload = JSON.parse(message.toString());
       const parsedData = parsePayloadRows(payload);
