@@ -58,6 +58,84 @@ const matchesAlias = (value, aliases) => {
   return aliases.some((alias) => normalizeText(alias) === normalizedValue);
 };
 
+// Format power values for API response only. Do not use before energy calculations.
+const roundPowerKw = (value) => {
+  const num = Number(value);
+
+  if (!Number.isFinite(num)) {
+    return 0;
+  }
+
+  if (Math.abs(num) < 0.0005) {
+    return 0;
+  }
+
+  return Number(num.toFixed(3));
+};
+
+const isPowerResponseRow = (row) => {
+  if (!row) return false;
+
+  if (
+    matchesAlias(row.category, CHART_CATEGORY_ALIASES.pv) &&
+    (
+      matchesAlias(row.type, CHART_TYPE_ALIASES.power) ||
+      matchesAlias(row.type, CHART_TYPE_ALIASES.chargePower)
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    matchesAlias(row.category, CHART_CATEGORY_ALIASES.load) &&
+    (
+      matchesAlias(row.type, CHART_TYPE_ALIASES.power) ||
+      matchesAlias(row.type, CHART_TYPE_ALIASES.vaPower)
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    matchesAlias(row.category, CHART_CATEGORY_ALIASES.grid) &&
+    matchesAlias(row.type, CHART_TYPE_ALIASES.power)
+  ) {
+    return true;
+  }
+
+  if (
+    matchesAlias(row.category, CHART_CATEGORY_ALIASES.battery) &&
+    matchesAlias(row.type, CHART_TYPE_ALIASES.power)
+  ) {
+    return true;
+  }
+
+  if (
+    matchesAlias(row.category, CHART_CATEGORY_ALIASES.productionFlow) &&
+    (
+      matchesAlias(row.type, CHART_TYPE_ALIASES.pvGenerate) ||
+      matchesAlias(row.type, CHART_TYPE_ALIASES.export) ||
+      matchesAlias(row.type, CHART_TYPE_ALIASES.charge)
+    )
+  ) {
+    return true;
+  }
+
+  return false;
+};
+
+const formatPowerValueForResponse = (row) => {
+  if (!isPowerResponseRow(row)) {
+    return row?.value === null || row?.value === undefined ? null : Number(row.value);
+  }
+
+  return roundPowerKw(row?.value);
+};
+
+const formatDeviceDataForResponse = (row) => ({
+  ...row,
+  value: isPowerResponseRow(row) ? roundPowerKw(row?.value) : row?.value,
+});
 const padChartTwo = (value) => String(value).padStart(2, "0");
 
 const formatDbTimestamp = ({
@@ -143,7 +221,7 @@ const formatChartRow = (row) => ({
   device_id: row.device_id,
   category: row.category,
   type: row.type,
-  value: row.value === null || row.value === undefined ? null : Number(row.value),
+  value: formatPowerValueForResponse(row),
   created_at: row.created_at,
 });
 
@@ -1014,6 +1092,8 @@ const getDeviceIdData = async (userId, plantId) => {
 module.exports = {
     saveDeviceData,
     saveBatteryPowerForPlant,
+    roundPowerKw,
+    formatDeviceDataForResponse,
     getDeviceData,
     getDailyData,
     getMonthlyData,

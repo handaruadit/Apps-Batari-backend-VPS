@@ -6,6 +6,7 @@ const {
     getLifetimeData, 
     getChartData,
     getLatestEnergyData,
+    formatDeviceDataForResponse,
     getDeviceIdData } = require("../services/data.service");
 const {
     sendManualPlantData: sendManualPlantDataService,
@@ -86,7 +87,7 @@ const fetchDeviceData = async (req, res) => {
             if (!accumulator[cat]) {
                 accumulator[cat] = {};
             }
-            accumulator[cat][currentItem.type] = currentItem;
+            accumulator[cat][currentItem.type] = formatDeviceDataForResponse(currentItem);
             return accumulator;
         }, {});
 
