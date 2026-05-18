@@ -8,7 +8,9 @@ const {
     getMonthly, 
     getYearly, 
     getLifetime,
-    getChart
+    getChart,
+    getMonthlyChart,
+    getYearlyChart
  } = require("../controllers/data.controller");
 
 // POST manual send endpoint for testing
@@ -16,6 +18,8 @@ router.post("/manual/send", sendManualPlantData);
 
 // GET data endpoint
 router.get("/", auth, fetchDeviceData);
+router.get("/chart/monthly", auth, getMonthlyChart);
+router.get("/chart/yearly", auth, getYearlyChart);
 router.get("/chart", auth, getChart);
 router.get("/daily", auth, getDaily);
 router.get("/monthly", auth, getMonthly);

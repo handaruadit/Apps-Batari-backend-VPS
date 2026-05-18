@@ -172,7 +172,11 @@ const parseRequestedTimestamp = ({
   return parsed;
 };
 
-const getTargetPlant = async ({ plantId, plantName = DEFAULT_PLANT_NAME } = {}) => {
+const getTargetPlant = async ({
+  plantId,
+  plantName = DEFAULT_PLANT_NAME,
+  strictPlantName = false,
+} = {}) => {
   if (plantId !== undefined && plantId !== null && plantId !== "") {
     const plant = await db("plants").where({ id: plantId }).first();
 
@@ -198,6 +202,10 @@ const getTargetPlant = async ({ plantId, plantName = DEFAULT_PLANT_NAME } = {}) 
 
   if (partialMatch) {
     return partialMatch;
+  }
+
+  if (strictPlantName) {
+    throw new Error("Plant_Not_Found");
   }
 
   if (String(plantName).toLowerCase() === "testing") {
@@ -228,7 +236,7 @@ const getAutomaticTargetPlant = async () => {
   }
 };
 
-const ensureTargetDeviceId = async ({ plantId, deviceId }) => {
+const ensureTargetDeviceId = async ({ plantId, deviceId, strictDevice = false }) => {
   if (deviceId) {
     const existingDevice = await db("plant_devices")
       .where({ device_id: deviceId })
@@ -240,6 +248,10 @@ const ensureTargetDeviceId = async ({ plantId, deviceId }) => {
       }
 
       return existingDevice.device_id;
+    }
+
+    if (strictDevice) {
+      throw new Error("Device_Not_Found");
     }
 
     await db("plant_devices").insert({
@@ -257,6 +269,10 @@ const ensureTargetDeviceId = async ({ plantId, deviceId }) => {
 
   if (mappedDevice) {
     return mappedDevice.device_id;
+  }
+
+  if (strictDevice) {
+    throw new Error("Device_Not_Found");
   }
 
   const generatedDeviceId = `mock-plant-${plantId}`;
@@ -615,6 +631,8 @@ const sendManualPlantData = async ({
   plantId,
   plantName,
   deviceId,
+  strictPlantName,
+  strictDevice,
   timestamp,
   createdAt,
   time,
@@ -622,10 +640,11 @@ const sendManualPlantData = async ({
   date,
   metrics,
 }) => {
-  const plant = await getTargetPlant({ plantId, plantName });
+  const plant = await getTargetPlant({ plantId, plantName, strictPlantName });
   const targetDeviceId = await ensureTargetDeviceId({
     plantId: plant.id,
     deviceId,
+    strictDevice,
   });
   const requestedTimestamp = parseRequestedTimestamp({
     timestamp,

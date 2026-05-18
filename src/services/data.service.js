@@ -32,6 +32,8 @@ const CHART_TYPE_ALIASES = {
 };
 
 const CHART_ALLOWED_SEGMENTS = ["day", "month", "year", "lifetime"];
+const CHART_ENERGY_UNIT = "MWh";
+const CHART_ENERGY_SOURCE = "backend-daily-kwh";
 
 const CHART_SERIES_CONFIG = {
   production: { category: "pv", type: "chargePower" },
@@ -126,7 +128,7 @@ const isPowerResponseRow = (row) => {
 
 const formatPowerValueForResponse = (row) => {
   if (!isPowerResponseRow(row)) {
-    return row?.value === null || row?.value === undefined ? null : Number(row.value);
+    return row?.value;
   }
 
   return roundPowerKw(row?.value);
@@ -134,8 +136,9 @@ const formatPowerValueForResponse = (row) => {
 
 const formatDeviceDataForResponse = (row) => ({
   ...row,
-  value: isPowerResponseRow(row) ? roundPowerKw(row?.value) : row?.value,
+  value: formatPowerValueForResponse(row),
 });
+
 const padChartTwo = (value) => String(value).padStart(2, "0");
 
 const formatDbTimestamp = ({
@@ -347,6 +350,16 @@ const createSeededRandom = (seedText) => {
 };
 
 const roundTwo = (value) => Number(value.toFixed(2));
+const positiveKwh = (value) => roundTwo(Math.abs(Number(value) || 0));
+const roundChartEnergy = (value) => {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return 0;
+  }
+
+  return Number(number.toFixed(4));
+};
 
 const addNoise = (value, range, random) => {
   const noise = (random() - 0.5) * range;
@@ -562,6 +575,7 @@ const saveBatteryPowerForPlant = async ({ plantName, powerKw }) => {
     return null;
   }
 };
+
 // Fungsi Ambil Data Device untuk API Endpoint
 const getDeviceData = async (filters) => {
   try {
@@ -740,6 +754,233 @@ const integrateRowsToKwh = (rows) => {
   }, 0);
 
   return Number.isFinite(total) ? roundTwo(total) : 0;
+};
+
+const getDailyKwhFromRows = (rows) => {
+  const pvRows = chooseEnergyRows(
+    rows,
+    CHART_CATEGORY_ALIASES.pv,
+    CHART_TYPE_ALIASES.chargePower,
+    CHART_TYPE_ALIASES.power,
+  );
+  const pvKwh = positiveKwh(integrateRowsToKwh(pvRows));
+  const gridKwh = positiveKwh(
+    integrateRowsToKwh(
+      chooseEnergyRows(
+        rows,
+        CHART_CATEGORY_ALIASES.grid,
+        CHART_TYPE_ALIASES.power,
+      ),
+    ),
+  );
+  const batteryKwh = positiveKwh(
+    integrateRowsToKwh(
+      chooseEnergyRows(
+        rows,
+        CHART_CATEGORY_ALIASES.battery,
+        CHART_TYPE_ALIASES.power,
+      ),
+    ),
+  );
+  const pvGenerateKwh = positiveKwh(
+    integrateRowsToKwh(
+      chooseEnergyRows(
+        rows,
+        CHART_CATEGORY_ALIASES.productionFlow,
+        CHART_TYPE_ALIASES.pvGenerate,
+      ),
+    ),
+  );
+  const exportKwh = positiveKwh(
+    integrateRowsToKwh(
+      chooseEnergyRows(
+        rows,
+        CHART_CATEGORY_ALIASES.productionFlow,
+        CHART_TYPE_ALIASES.export,
+      ),
+    ),
+  );
+  const chargeKwh = positiveKwh(
+    integrateRowsToKwh(
+      chooseEnergyRows(
+        rows,
+        CHART_CATEGORY_ALIASES.productionFlow,
+        CHART_TYPE_ALIASES.charge,
+      ),
+    ),
+  );
+
+  return {
+    pvKwh,
+    gridKwh,
+    batteryKwh,
+    pvGenerateKwh,
+    exportKwh,
+    chargeKwh,
+    totalConsumptionKwh: roundTwo(pvKwh + gridKwh + batteryKwh),
+    totalProductionKwh: roundTwo(pvGenerateKwh + exportKwh + chargeKwh),
+  };
+};
+
+const toChartUnit = (kwh) => roundChartEnergy(Math.abs(Number(kwh) || 0) / 1000);
+
+const buildChartEnergyItem = (energy) => ({
+  pv: toChartUnit(energy.pvKwh),
+  grid: toChartUnit(energy.gridKwh),
+  battery: toChartUnit(energy.batteryKwh),
+  pvGenerate: toChartUnit(energy.pvGenerateKwh),
+  export: toChartUnit(energy.exportKwh),
+  charge: toChartUnit(energy.chargeKwh),
+  totalConsumption: toChartUnit(energy.totalConsumptionKwh),
+  totalProduction: toChartUnit(energy.totalProductionKwh),
+});
+
+const sumDailyKwh = (dailyItems) =>
+  dailyItems.reduce(
+    (total, item) => ({
+      pvKwh: total.pvKwh + item.pvKwh,
+      gridKwh: total.gridKwh + item.gridKwh,
+      batteryKwh: total.batteryKwh + item.batteryKwh,
+      pvGenerateKwh: total.pvGenerateKwh + item.pvGenerateKwh,
+      exportKwh: total.exportKwh + item.exportKwh,
+      chargeKwh: total.chargeKwh + item.chargeKwh,
+      totalConsumptionKwh:
+        total.totalConsumptionKwh + item.totalConsumptionKwh,
+      totalProductionKwh: total.totalProductionKwh + item.totalProductionKwh,
+    }),
+    {
+      pvKwh: 0,
+      gridKwh: 0,
+      batteryKwh: 0,
+      pvGenerateKwh: 0,
+      exportKwh: 0,
+      chargeKwh: 0,
+      totalConsumptionKwh: 0,
+      totalProductionKwh: 0,
+    },
+  );
+
+const getDailyKwhItems = async ({ deviceIds, year, month }) => {
+  const daysInMonth = getDaysInMonth(year, month);
+  const start = formatDbTimestamp({ year, month, day: 1 });
+  const end = formatDbTimestamp({
+    year,
+    month,
+    day: daysInMonth,
+    hour: 23,
+    minute: 59,
+    second: 59,
+    millisecond: 999,
+  });
+  const categories = Object.values(CHART_CATEGORY_ALIASES).flat();
+  const types = Object.values(CHART_TYPE_ALIASES).flat();
+  const rows = await db("device_data")
+    .select(
+      "id",
+      "device_id",
+      "category",
+      "type",
+      "value",
+      "created_at",
+      db.raw("TO_CHAR(created_at, 'YYYY-MM-DD') as chart_day"),
+    )
+    .whereIn("device_id", deviceIds)
+    .whereIn("category", categories)
+    .whereIn("type", types)
+    .whereBetween("created_at", [start, end])
+    .orderBy([
+      { column: "created_at", order: "asc" },
+      { column: "id", order: "asc" },
+    ]);
+
+  const rowsByDate = rows.reduce((items, row) => {
+    if (!items[row.chart_day]) {
+      items[row.chart_day] = [];
+    }
+
+    items[row.chart_day].push(row);
+    return items;
+  }, {});
+
+  return Array.from({ length: daysInMonth }, (_, index) => {
+    const day = index + 1;
+    const date = `${year}-${padTwo(month)}-${padTwo(day)}`;
+
+    return {
+      day,
+      date,
+      ...getDailyKwhFromRows(rowsByDate[date] || []),
+    };
+  });
+};
+
+const getMonthlyChartData = async ({ deviceIds, month }) => {
+  if (!/^\d{4}-\d{2}$/.test(String(month || ""))) {
+    throw new Error("Invalid_Chart_Date");
+  }
+
+  const [yearNumber, monthNumber] = String(month).split("-").map(Number);
+  const dailyItems = await getDailyKwhItems({
+    deviceIds,
+    year: yearNumber,
+    month: monthNumber,
+  });
+
+  return {
+    unit: CHART_ENERGY_UNIT,
+    source: CHART_ENERGY_SOURCE,
+    items: dailyItems.map((item) => ({
+      day: item.day,
+      date: item.date,
+      ...buildChartEnergyItem(item),
+    })),
+  };
+};
+
+const MONTH_LABELS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+const getYearlyChartData = async ({ deviceIds, year }) => {
+  if (!/^\d{4}$/.test(String(year || ""))) {
+    throw new Error("Invalid_Chart_Date");
+  }
+
+  const yearNumber = Number(year);
+  const monthlyItems = await Promise.all(
+    Array.from({ length: 12 }, async (_, index) => {
+      const month = index + 1;
+      const dailyItems = await getDailyKwhItems({
+        deviceIds,
+        year: yearNumber,
+        month,
+      });
+      const monthlyKwh = sumDailyKwh(dailyItems);
+
+      return {
+        month,
+        label: MONTH_LABELS[index],
+        ...buildChartEnergyItem(monthlyKwh),
+      };
+    }),
+  );
+
+  return {
+    unit: CHART_ENERGY_UNIT,
+    source: CHART_ENERGY_SOURCE,
+    items: monthlyItems,
+  };
 };
 
 const buildEnergyPayload = ({
@@ -984,6 +1225,30 @@ const getLifetimeData = async ({ deviceId, category, types }) => {
 };
 
 const getChartData = async ({ plantId, deviceIds, segment, date }) => {
+  if (segment === "month") {
+    const data = await getMonthlyChartData({ deviceIds, month: date });
+
+    return {
+      source: CHART_ENERGY_SOURCE,
+      counts: { items: data.items.length },
+      rowCount: data.items.length,
+      range: null,
+      data,
+    };
+  }
+
+  if (segment === "year") {
+    const data = await getYearlyChartData({ deviceIds, year: date });
+
+    return {
+      source: CHART_ENERGY_SOURCE,
+      counts: { items: data.items.length },
+      rowCount: data.items.length,
+      range: null,
+      data,
+    };
+  }
+
   const { start, end } = getChartDateRange(segment, date);
   const categories = Object.values(CHART_CATEGORY_ALIASES).flat();
   const types = Object.values(CHART_TYPE_ALIASES).flat();
@@ -1100,8 +1365,11 @@ module.exports = {
     getYearlyData,
     getLifetimeData,
     getChartData,
+    getMonthlyChartData,
+    getYearlyChartData,
     getLatestEnergyData,
     // formatByType,
     checkDeviceAccess,
     getDeviceIdData,
 };
+
