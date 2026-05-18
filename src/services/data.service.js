@@ -428,6 +428,62 @@ const saveDeviceData = async (data) => {
   }
 };
 
+const findBatteryDeviceIdForPlant = async (plantName) => {
+  const plant = await db("plants")
+    .where("name", plantName)
+    .first("id");
+
+  if (!plant) {
+    console.warn(`Battery power skipped: plant not found for ${plantName}`);
+    return null;
+  }
+
+  const devices = await db("plant_devices")
+    .where("plant_id", plant.id)
+    .select("device_id");
+
+  if (devices.length === 0) {
+    console.warn(`Battery power skipped: plant_devices empty for ${plantName}`);
+    return null;
+  }
+
+  const deviceIds = devices.map((device) => device.device_id);
+  const existingBatteryDevice = await db("device_data")
+    .whereIn("device_id", deviceIds)
+    .where({ category: "baterai", type: "power" })
+    .orderBy("created_at", "desc")
+    .first("device_id");
+
+  return existingBatteryDevice?.device_id || deviceIds[0];
+};
+
+const saveBatteryPowerForPlant = async ({ plantName, powerKw }) => {
+  try {
+    const value = Number(powerKw);
+    if (!Number.isFinite(value)) {
+      return null;
+    }
+
+    const deviceId = await findBatteryDeviceIdForPlant(plantName);
+    if (!deviceId) {
+      return null;
+    }
+
+    const [row] = await db("device_data")
+      .insert({
+        device_id: deviceId,
+        category: "baterai",
+        type: "power",
+        value,
+      })
+      .returning("*");
+
+    return row;
+  } catch (err) {
+    console.error("DB Battery Power Insert Error:", err.message);
+    return null;
+  }
+};
 // Fungsi Ambil Data Device untuk API Endpoint
 const getDeviceData = async (filters) => {
   try {
@@ -957,6 +1013,7 @@ const getDeviceIdData = async (userId, plantId) => {
 
 module.exports = {
     saveDeviceData,
+    saveBatteryPowerForPlant,
     getDeviceData,
     getDailyData,
     getMonthlyData,
@@ -968,4 +1025,3 @@ module.exports = {
     checkDeviceAccess,
     getDeviceIdData,
 };
-
