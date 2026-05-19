@@ -519,7 +519,7 @@ const saveDeviceData = async (data) => {
   }
 };
 
-const findBatteryDeviceIdForPlant = async (plantName) => {
+const findBatteryDeviceIdForPlant = async (plantName, preferredDeviceId) => {
   const plant = await db("plants")
     .where("name", plantName)
     .first("id");
@@ -538,6 +538,19 @@ const findBatteryDeviceIdForPlant = async (plantName) => {
     return null;
   }
 
+  if (preferredDeviceId) {
+    const mappedDevice = devices.find((device) => device.device_id === preferredDeviceId);
+
+    if (!mappedDevice) {
+      console.warn(
+        `Battery power skipped: device ${preferredDeviceId} is not mapped to plant ${plantName}`
+      );
+      return null;
+    }
+
+    return preferredDeviceId;
+  }
+
   const deviceIds = devices.map((device) => device.device_id);
   const existingBatteryDevice = await db("device_data")
     .whereIn("device_id", deviceIds)
@@ -548,21 +561,21 @@ const findBatteryDeviceIdForPlant = async (plantName) => {
   return existingBatteryDevice?.device_id || deviceIds[0];
 };
 
-const saveBatteryPowerForPlant = async ({ plantName, powerKw }) => {
+const saveBatteryPowerForPlant = async ({ plantName, deviceId, powerKw }) => {
   try {
     const value = Number(powerKw);
     if (!Number.isFinite(value)) {
       return null;
     }
 
-    const deviceId = await findBatteryDeviceIdForPlant(plantName);
-    if (!deviceId) {
+    const targetDeviceId = await findBatteryDeviceIdForPlant(plantName, deviceId);
+    if (!targetDeviceId) {
       return null;
     }
 
     const [row] = await db("device_data")
       .insert({
-        device_id: deviceId,
+        device_id: targetDeviceId,
         category: "baterai",
         type: "power",
         value,

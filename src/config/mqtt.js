@@ -8,10 +8,28 @@ const {
 
 const BMS_DEVICE_ID = process.env.BMS_DEVICE_ID || "BS26040012";
 const BMS_TARGET_PLANT_NAME = process.env.BMS_TARGET_PLANT_NAME || "Kantor Batari Energy";
+const BMS_TARGET_DEVICE_ID = process.env.BMS_TARGET_DEVICE_ID || null;
 const BMS_MQTT_TOPIC = process.env.BMS_MQTT_TOPIC;
 const BMS_POWER_CATEGORY = "baterai";
 const BMS_POWER_TYPE = "power";
 const bmsLatest = {};
+const isBmsDebugEnabled = process.env.BMS_MQTT_DEBUG === "true";
+
+const previewPayload = (message, maxLength = 500) => {
+  const raw = message.toString();
+  return raw.length > maxLength ? `${raw.slice(0, maxLength)}...` : raw;
+};
+
+const summarizeMqttConfig = (label, config) => {
+  console.log(`${label} config`, {
+    protocol: config.protocol,
+    host: config.host,
+    port: config.port,
+    topic: config.topic,
+    clientId: config.clientId,
+    usernameSet: Boolean(config.username),
+  });
+};
 
 const topicMatchesSubscription = (subscription, topic) => {
   if (!subscription || !topic) return false;
@@ -111,6 +129,16 @@ const parsePayloadRows = (payload) => {
 };
 
 const handleBmsBatteryPower = async (parsedData) => {
+  const payloadDeviceIds = [...new Set(parsedData.map((row) => row.deviceId).filter(Boolean))];
+  console.log(`BMS parsed device_id: ${payloadDeviceIds.join(", ") || "unknown"}`);
+
+  if (!payloadDeviceIds.includes(BMS_DEVICE_ID)) {
+    console.warn(
+      `BMS payload ignored: device_id ${payloadDeviceIds.join(", ") || "unknown"} does not match ${BMS_DEVICE_ID}`
+    );
+    return;
+  }
+
   const bmsRows = parsedData.filter((row) =>
     row.deviceId === BMS_DEVICE_ID &&
     (row.type === "voltage" || row.type === "current") &&
@@ -138,12 +166,15 @@ const handleBmsBatteryPower = async (parsedData) => {
   const powerKw = (voltage * current) / 1000;
   const saved = await saveBatteryPowerForPlant({
     plantName: BMS_TARGET_PLANT_NAME,
+    deviceId: BMS_TARGET_DEVICE_ID,
     powerKw,
   });
 
   if (saved) {
     console.log(`BMS Battery Power: ${powerKw} kW -> ${BMS_POWER_CATEGORY}/${BMS_POWER_TYPE}`);
-    console.log(`Saved BMS Battery power for plant ${BMS_TARGET_PLANT_NAME}`);
+    console.log(`Saved BMS Battery power for plant ${BMS_TARGET_PLANT_NAME} device ${saved.device_id}`);
+  } else {
+    console.warn(`BMS Battery power was not saved for plant ${BMS_TARGET_PLANT_NAME}`);
   }
 };
 
@@ -179,12 +210,35 @@ const shouldConnectBmsMqtt = Boolean(
 
 const bmsClient = shouldConnectBmsMqtt ? mqtt.connect(bmsConnectUrl, bmsOptions) : null;
 
+summarizeMqttConfig("MQTT", {
+  protocol: process.env.MQTT_PROTOCOL,
+  host: process.env.MQTT_HOST,
+  port: process.env.MQTT_PORT,
+  topic: "app/+/baterai, app/+/inverter",
+  clientId: process.env.MQTT_CLIENT_ID,
+  username: process.env.MQTT_USERNAME,
+});
+
+summarizeMqttConfig("BMS MQTT", {
+  protocol: process.env.BMS_MQTT_PROTOCOL,
+  host: process.env.BMS_MQTT_HOST,
+  port: process.env.BMS_MQTT_PORT,
+  topic: BMS_MQTT_TOPIC,
+  clientId: process.env.BMS_MQTT_CLIENT_ID,
+  username: process.env.BMS_MQTT_USERNAME,
+});
+
 client.on("connect", () => {
   console.log("MQTT Connected");
   try {
-    client.subscribe("app/+/baterai");
-    client.subscribe("app/+/inverter");
-    console.log("Subscribed to All device data");
+    client.subscribe(["app/+/baterai", "app/+/inverter"], (err) => {
+      if (err) {
+        console.error("MQTT Subscribe Error:", err.message);
+        return;
+      }
+
+      console.log("Subscribed to All device data: app/+/baterai, app/+/inverter");
+    });
   } catch (err) {
     console.error("MQTT Subscribe Error:", err.message);
   }
@@ -198,8 +252,21 @@ client.on("reconnect", () => {
   console.log("Reconnecting MQTT...");
 });
 
+client.on("close", () => {
+  console.warn("MQTT connection closed");
+});
+
+client.on("offline", () => {
+  console.warn("MQTT client offline");
+});
+
 client.on("message", async (topic, message) => {
   try {
+    console.log(`MQTT message received: topic=${topic}, bytes=${message.length}`);
+    if (isBmsDebugEnabled) {
+      console.log("MQTT payload preview:", previewPayload(message));
+    }
+
     const payload = JSON.parse(message.toString());
     const parsedData = parsePayloadRows(payload);
     if (parsedData.length === 0) return;
@@ -227,13 +294,13 @@ client.on("message", async (topic, message) => {
 if (bmsClient) {
   bmsClient.on("connect", () => {
     console.log("BMS MQTT Connected");
-    bmsClient.subscribe(process.env.BMS_MQTT_TOPIC, (err) => {
+    bmsClient.subscribe(BMS_MQTT_TOPIC, (err) => {
       if (err) {
         console.error("BMS MQTT Subscribe Error:", err.message);
         return;
       }
 
-      console.log("Subscribed to BMS device data");
+      console.log(`Subscribed to BMS device data: ${BMS_MQTT_TOPIC}`);
     });
   });
 
@@ -245,13 +312,39 @@ if (bmsClient) {
     console.log("Reconnecting BMS MQTT...");
   });
 
+  bmsClient.on("close", () => {
+    console.warn("BMS MQTT connection closed");
+  });
+
+  bmsClient.on("offline", () => {
+    console.warn("BMS MQTT client offline");
+  });
+
   bmsClient.on("message", async (topic, message) => {
     try {
-      if (!topicMatchesSubscription(BMS_MQTT_TOPIC, topic)) return;
+      console.log(`BMS MQTT message received: topic=${topic}, bytes=${message.length}`);
+      if (isBmsDebugEnabled) {
+        console.log("BMS MQTT payload preview:", previewPayload(message));
+      }
 
-      const payload = JSON.parse(message.toString());
+      if (!topicMatchesSubscription(BMS_MQTT_TOPIC, topic)) {
+        console.warn(`BMS MQTT topic ignored: ${topic} does not match ${BMS_MQTT_TOPIC}`);
+        return;
+      }
+
+      let payload;
+      try {
+        payload = JSON.parse(message.toString());
+      } catch (err) {
+        console.error(`BMS MQTT payload JSON parse failed: ${err.message}`);
+        return;
+      }
+
       const parsedData = parsePayloadRows(payload);
-      if (parsedData.length === 0) return;
+      if (parsedData.length === 0) {
+        console.warn("BMS MQTT payload ignored: no parsable rows");
+        return;
+      }
 
       await handleBmsBatteryPower(parsedData);
 
