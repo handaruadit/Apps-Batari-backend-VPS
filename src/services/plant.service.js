@@ -85,11 +85,22 @@ const assignDeviceToPlant = async (deviceId, plantId, userId) => {
   });
 };
 
-const getPlantDevices = async (plantId) => {
-  return db("plant_devices")
-    .where({ plant_id: plantId })
-    .select("*")
-    .orderBy("device_id", "asc");
+const getPlantDevices = async (plantId, userId) => {
+  return db("plant_devices as pd")
+    .leftJoin("device_access_permissions as dap", function joinPermissions() {
+      this.on("dap.plant_id", "=", "pd.plant_id")
+        .andOn("dap.device_id", "=", "pd.device_id")
+        .andOn("dap.user_id", "=", db.raw("?", [userId]));
+    })
+    .leftJoin("device_data as dd", "dd.device_id", "pd.device_id")
+    .where("pd.plant_id", plantId)
+    .select(
+      "pd.*",
+      db.raw("COALESCE(dap.allowed, false) as allowed"),
+      db.raw("MAX(dd.created_at) as latest_data_at"),
+    )
+    .groupBy("pd.id", "dap.allowed")
+    .orderBy("pd.device_id", "asc");
 };
 
 // UPDATE PLANT

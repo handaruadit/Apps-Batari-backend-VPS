@@ -116,7 +116,7 @@ const getPlantDeviceData = async (req, res) => {
       return res.status(403).json({ message: "Access denied" });
     }
 
-    const devices = await getPlantDevices(plantId);
+    const devices = await getPlantDevices(plantId, userId);
     res.json({
       status: "success",
       data: {
