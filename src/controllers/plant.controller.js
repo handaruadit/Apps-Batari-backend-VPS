@@ -1,9 +1,20 @@
-const { assignDeviceToPlant } = require("../services/plant.service");
-const { checkPlantAccess } = require("../services/plant.service");
-const { assignUserToPlant } = require("../services/plant.service");
-const { getPlantDevices } = require("../services/plant.service");
-const { getPlants } = require("../services/plant.service");
-const { create } = require("../services/plant.service");
+const {
+  addPlantAccess,
+  assignDeviceToPlant,
+  assignUserToPlant,
+  canManagePlant,
+  canViewPlant,
+  create,
+  deletePlant: deletePlantService,
+  getPlantAccessList,
+  getPlantDevices,
+  getPlants,
+  isPlantOwner,
+  removePlantAccess,
+  searchRegisteredUsers,
+  updatePlant,
+  updatePlantAccess,
+} = require("../services/plant.service");
 
 const validatePlantCreatePayload = (payload) => {
   const requiredFields = [
@@ -17,7 +28,11 @@ const validatePlantCreatePayload = (payload) => {
   ];
 
   for (const field of requiredFields) {
-    if (payload[field] === undefined || payload[field] === null || payload[field] === "") {
+    if (
+      payload[field] === undefined ||
+      payload[field] === null ||
+      payload[field] === ""
+    ) {
       return `${field} is required`;
     }
   }
@@ -29,27 +44,41 @@ const validatePlantCreatePayload = (payload) => {
     return "latitude must be between -90 and 90";
   }
 
-  if (typeof payload.longitude !== "number" || Number.isNaN(payload.longitude)) {
+  if (
+    typeof payload.longitude !== "number" ||
+    Number.isNaN(payload.longitude)
+  ) {
     return "longitude must be a valid number";
   }
   if (payload.longitude < -180 || payload.longitude > 180) {
     return "longitude must be between -180 and 180";
   }
 
-  if (typeof payload.pv_capacity !== "number" || Number.isNaN(payload.pv_capacity)) {
+  if (
+    typeof payload.pv_capacity !== "number" ||
+    Number.isNaN(payload.pv_capacity)
+  ) {
     return "pv_capacity must be a valid number";
   }
 
-  if (payload.battery_capacity !== undefined && payload.battery_capacity !== null && payload.battery_capacity !== "") {
-    if (typeof payload.battery_capacity !== "number" || Number.isNaN(payload.battery_capacity)) {
-      return "battery_capacity must be a valid number";
-    }
+  if (
+    payload.battery_capacity !== undefined &&
+    payload.battery_capacity !== null &&
+    payload.battery_capacity !== "" &&
+    (typeof payload.battery_capacity !== "number" ||
+      Number.isNaN(payload.battery_capacity))
+  ) {
+    return "battery_capacity must be a valid number";
   }
 
-  if (payload.electricity_price !== undefined && payload.electricity_price !== null && payload.electricity_price !== "") {
-    if (typeof payload.electricity_price !== "number" || Number.isNaN(payload.electricity_price)) {
-      return "electricity_price must be a valid number";
-    }
+  if (
+    payload.electricity_price !== undefined &&
+    payload.electricity_price !== null &&
+    payload.electricity_price !== "" &&
+    (typeof payload.electricity_price !== "number" ||
+      Number.isNaN(payload.electricity_price))
+  ) {
+    return "electricity_price must be a valid number";
   }
 
   return null;
@@ -84,7 +113,7 @@ const addDeviceToPlant = async (req, res) => {
     const plantId = req.body.plant_id || req.body.plantId || req.params.id;
     const userId = req.user.userId;
 
-    const allowed = await checkPlantAccess(userId, plantId);
+    const allowed = await canManagePlant(userId, plantId);
     if (!allowed) {
       return res.status(403).json({ message: "Access denied" });
     }
@@ -96,12 +125,6 @@ const addDeviceToPlant = async (req, res) => {
       return res.status(400).json({ message: "Device ID tidak boleh kosong" });
     }
 
-    if (err.message === "Device_Not_Registered") {
-      return res.status(404).json({
-        message: "Device ID belum terdaftar. Hubungi admin.",
-      });
-    }
-
     res.status(500).json({ message: err.message });
   }
 };
@@ -111,12 +134,12 @@ const getPlantDeviceData = async (req, res) => {
     const plantId = req.params.id;
     const userId = req.user.userId;
 
-    const allowed = await checkPlantAccess(userId, plantId);
+    const allowed = await canViewPlant(userId, plantId);
     if (!allowed) {
       return res.status(403).json({ message: "Access denied" });
     }
 
-    const devices = await getPlantDevices(plantId, userId);
+    const devices = await getPlantDevices(plantId);
     res.json({
       status: "success",
       data: {
@@ -145,6 +168,40 @@ const createPlant = async (req, res) => {
   }
 };
 
+const updatePlantData = async (req, res) => {
+  try {
+    const plantId = req.params.id;
+    const userId = req.user.userId;
+
+    const allowed = await canManagePlant(userId, plantId);
+    if (!allowed) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    await updatePlant(plantId, req.body);
+    res.json({ status: "updated" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+const deletePlantData = async (req, res) => {
+  try {
+    const plantId = req.params.id;
+    const userId = req.user.userId;
+
+    const allowed = await isPlantOwner(userId, plantId);
+    if (!allowed) {
+      return res.status(403).json({ message: "Only owner can delete plant" });
+    }
+
+    await deletePlantService(plantId);
+    res.json({ status: "deleted" });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 const assignUserToPlantByEmail = async (req, res) => {
   try {
     const validationError = validateAssignUserPayload(req.body);
@@ -157,7 +214,7 @@ const assignUserToPlantByEmail = async (req, res) => {
     const role = req.body.role;
     const userId = req.user.userId;
 
-    const allowed = await checkPlantAccess(userId, plantId);
+    const allowed = await canManagePlant(userId, plantId);
     if (!allowed) {
       return res.status(403).json({ message: "Access denied" });
     }
@@ -175,8 +232,8 @@ const assignUserToPlantByEmail = async (req, res) => {
 const getPlantData = async (req, res) => {
   try {
     const userId = req.user.userId;
-
     const data = await getPlants(userId);
+
     res.json({
       status: "success",
       data,
@@ -186,10 +243,144 @@ const getPlantData = async (req, res) => {
   }
 };
 
+const getPlantAccessData = async (req, res) => {
+  try {
+    const plantId = req.params.id;
+    const userId = req.user.userId;
+
+    const allowed = await canManagePlant(userId, plantId);
+    if (!allowed) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const users = await getPlantAccessList(plantId);
+    res.json({ status: "success", data: users });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+const searchPlantAccessUsers = async (req, res) => {
+  try {
+    const plantId = req.params.id;
+    const userId = req.user.userId;
+
+    const allowed = await canManagePlant(userId, plantId);
+    if (!allowed) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const users = await searchRegisteredUsers({
+      query: req.body.query,
+      excludePlantId: plantId,
+    });
+    res.json({ status: "success", data: users });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+const addPlantAccessUser = async (req, res) => {
+  try {
+    const plantId = req.params.id;
+    const actorId = req.user.userId;
+
+    const allowed = await canManagePlant(actorId, plantId);
+    if (!allowed) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    await addPlantAccess({
+      plantId,
+      userId: req.body.userId,
+      role: req.body.role || "only_view",
+    });
+
+    const users = await getPlantAccessList(plantId);
+    res.status(201).json({ status: "success", data: users });
+  } catch (err) {
+    if (err.message === "User_Not_Found") {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (err.message === "Cannot_Assign_Owner") {
+      return res.status(400).json({ message: "Owner role cannot be assigned" });
+    }
+
+    res.status(500).json({ message: err.message });
+  }
+};
+
+const updatePlantAccessUser = async (req, res) => {
+  try {
+    const plantId = req.params.id;
+    const targetUserId = req.params.userId;
+    const actorId = req.user.userId;
+
+    const allowed = await canManagePlant(actorId, plantId);
+    if (!allowed) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    await updatePlantAccess({
+      plantId,
+      userId: targetUserId,
+      role: req.body.role,
+    });
+
+    const users = await getPlantAccessList(plantId);
+    res.json({ status: "success", data: users });
+  } catch (err) {
+    if (err.message === "Cannot_Modify_Owner") {
+      return res.status(400).json({ message: "Owner access cannot be changed" });
+    }
+
+    if (err.message === "Access_Not_Found") {
+      return res.status(404).json({ message: "Access not found" });
+    }
+
+    res.status(500).json({ message: err.message });
+  }
+};
+
+const removePlantAccessUser = async (req, res) => {
+  try {
+    const plantId = req.params.id;
+    const targetUserId = req.params.userId;
+    const actorId = req.user.userId;
+
+    const allowed = await canManagePlant(actorId, plantId);
+    if (!allowed) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    await removePlantAccess({ plantId, userId: targetUserId });
+    const users = await getPlantAccessList(plantId);
+    res.json({ status: "success", data: users });
+  } catch (err) {
+    if (err.message === "Cannot_Modify_Owner") {
+      return res.status(400).json({ message: "Owner access cannot be removed" });
+    }
+
+    if (err.message === "Access_Not_Found") {
+      return res.status(404).json({ message: "Access not found" });
+    }
+
+    res.status(500).json({ message: err.message });
+  }
+};
+
 module.exports = {
   createPlant,
   addDeviceToPlant,
+  addPlantAccessUser,
   assignUserToPlantByEmail,
+  deletePlantData,
+  getPlantAccessData,
   getPlantDeviceData,
   getPlantData,
+  removePlantAccessUser,
+  searchPlantAccessUsers,
+  updatePlantAccessUser,
+  updatePlantData,
 };

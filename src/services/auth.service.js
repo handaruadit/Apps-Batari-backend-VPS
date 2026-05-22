@@ -4,9 +4,6 @@ const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const { generateToken } = require("../config/jwt");
 
-const ADMIN_EMAIL = "admin@batarienergy.com";
-const ADMIN_PASSWORD = "password";
-
 const registerUser = async ({ email, password, phone }) => {
   const existingUser = await db("users").where({ email }).first();
   if (existingUser) {
@@ -55,39 +52,6 @@ const loginUser = async ({ email, password }) => {
       role,
     },
   };
-};
-
-const seedAdminUser = async () => {
-  const existingAdmin = await db("users").where({ email: ADMIN_EMAIL }).first();
-
-  if (existingAdmin) {
-    if (existingAdmin.role !== "admin") {
-      const [updatedAdmin] = await db("users")
-        .where({ id: existingAdmin.id })
-        .update({ role: "admin", updated_at: db.fn.now() })
-        .returning(["id", "email", "role"]);
-
-      return updatedAdmin;
-    }
-
-    return {
-      id: existingAdmin.id,
-      email: existingAdmin.email,
-      role: existingAdmin.role,
-    };
-  }
-
-  const hashed = await bcrypt.hash(ADMIN_PASSWORD, 10);
-  const [admin] = await db("users")
-    .insert({
-      email: ADMIN_EMAIL,
-      password: hashed,
-      phone: `email:${ADMIN_EMAIL}`,
-      role: "admin",
-    })
-    .returning(["id", "email", "role"]);
-
-  return admin;
 };
 
 const createResetCode = () => {
@@ -352,5 +316,4 @@ module.exports = {
   verifyPasswordResetCode,
   resetPassword,
   normalizePhoneNumber,
-  seedAdminUser,
 };

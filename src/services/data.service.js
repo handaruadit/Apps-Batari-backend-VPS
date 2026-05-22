@@ -1337,11 +1337,6 @@ const getChartData = async ({ plantId, deviceIds, segment, date }) => {
 const checkDeviceAccess = async (userId, deviceId, plantId) => {
   const data = await db("plant_devices as pd")
     .join("user_plants as up", "pd.plant_id", "up.plant_id")
-    .join("device_access_permissions as dap", function joinPermissions() {
-      this.on("dap.user_id", "=", "up.user_id")
-        .andOn("dap.plant_id", "=", "up.plant_id")
-        .andOn("dap.device_id", "=", "pd.device_id");
-    })
     .where("pd.device_id", deviceId)
     .where("up.user_id", userId)
     .modify((query) => {
@@ -1349,12 +1344,19 @@ const checkDeviceAccess = async (userId, deviceId, plantId) => {
         query.where("pd.plant_id", plantId);
       }
     })
-    .where("dap.allowed", true)
     .first();
 
   return !!data;
 };
-const getDeviceIdData = async (userId, plantId, role = "user") => {
+const getDeviceIdData = async (userId, plantId) => {
+  const plantAccess = await db("user_plants")
+    .where({ user_id: userId, plant_id: plantId })
+    .first("role");
+
+  if (!plantAccess) {
+    throw new Error("Access_Denied");
+  }
+
   const devices = await db("plant_devices")
     .where("plant_id", plantId)
     .select("device_id");
@@ -1363,23 +1365,7 @@ const getDeviceIdData = async (userId, plantId, role = "user") => {
     throw new Error("Data_Not_Found");
   }
 
-  if (role === "admin") {
-    return devices;
-  }
-
-  const allowedDevices = [];
-  for (const item of devices) {
-    const isAllowed = await checkDeviceAccess(userId, item.device_id, plantId);
-    if (isAllowed) {
-      allowedDevices.push(item);
-    }
-  }
-
-  if (allowedDevices.length === 0) {
-     throw new Error("Access_Denied"); 
-  }
-
-  return allowedDevices;
+  return devices;
 };
 
 module.exports = {

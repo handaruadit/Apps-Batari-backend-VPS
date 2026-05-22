@@ -60,7 +60,7 @@ const parseOptionalMetric = (body, keys, label) => {
 const sendDeviceAccessDenied = (res) => {
     return res.status(403).json({
         success: false,
-        message: "Akses device belum diizinkan oleh admin",
+        message: "Anda tidak memiliki akses ke plant ini",
     });
 };
 

@@ -1,4 +1,4 @@
--- Safe setup for admin-managed valid Device IDs.
+-- Safe setup for Device IDs registered automatically from Add Datalogger.
 -- Run this without resetting existing data:
 -- sudo -u postgres psql -d apidb -f scripts/setup-registered-devices.sql
 --

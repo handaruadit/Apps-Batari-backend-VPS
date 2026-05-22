@@ -1,27 +1,43 @@
 const router = require("express").Router();
 const auth = require("../middlewares/auth.middleware");
-const { updatePlant } = require("../services/plant.service");
-const { createPlant, assignUserToPlantByEmail } = require("../controllers/plant.controller");
-const { addDeviceToPlant } = require("../controllers/plant.controller");
-const { getPlantDeviceData } = require("../controllers/plant.controller");
-const { getPlantData } = require("../controllers/plant.controller");
-
-// update plant
-router.put("/:id", auth, async (req, res) => {
-  await updatePlant(req.params.id, req.body);
-  res.json({ status: "updated" });
-});
+const {
+  addDeviceToPlant,
+  addPlantAccessUser,
+  assignUserToPlantByEmail,
+  createPlant,
+  deletePlantData,
+  getPlantAccessData,
+  getPlantData,
+  getPlantDeviceData,
+  removePlantAccessUser,
+  searchPlantAccessUsers,
+  updatePlantAccessUser,
+  updatePlantData,
+} = require("../controllers/plant.controller");
 
 // create plant
 router.post("/create", auth, createPlant);
 
-// assign user to plant
+// legacy assign user to plant
 router.post("/assign-user", auth, assignUserToPlantByEmail);
 
-// assign device to plant
+// legacy assign device to plant
 router.post("/assign-device", auth, addDeviceToPlant);
+
+// plant access management
+router.get("/:id/access", auth, getPlantAccessData);
+router.post("/:id/access/search", auth, searchPlantAccessUsers);
+router.post("/:id/access", auth, addPlantAccessUser);
+router.patch("/:id/access/:userId", auth, updatePlantAccessUser);
+router.delete("/:id/access/:userId", auth, removePlantAccessUser);
+
+// plant devices
 router.post("/:id/device", auth, addDeviceToPlant);
 router.get("/:id/devices", auth, getPlantDeviceData);
+
+// update/delete plant
+router.put("/:id", auth, updatePlantData);
+router.delete("/:id", auth, deletePlantData);
 
 // get plant data
 router.get("/", auth, getPlantData);
