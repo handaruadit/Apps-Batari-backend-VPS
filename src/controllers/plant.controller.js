@@ -1,6 +1,7 @@
 const { assignDeviceToPlant } = require("../services/plant.service");
 const { checkPlantAccess } = require("../services/plant.service");
 const { assignUserToPlant } = require("../services/plant.service");
+const { getPlantDevices } = require("../services/plant.service");
 const { getPlants } = require("../services/plant.service");
 const { create } = require("../services/plant.service");
 
@@ -55,7 +56,7 @@ const validatePlantCreatePayload = (payload) => {
 };
 
 const validateAssignDevicePayload = (payload) => {
-  if (!payload.deviceId) return "deviceId is required";
+  if (!payload.deviceId && !payload.device_id) return "deviceId is required";
   const plantId = payload.plant_id || payload.plantId;
   if (!plantId) return "plant_id is required";
   return null;
@@ -71,13 +72,16 @@ const validateAssignUserPayload = (payload) => {
 
 const addDeviceToPlant = async (req, res) => {
   try {
-    const validationError = validateAssignDevicePayload(req.body);
+    const validationError = validateAssignDevicePayload({
+      ...req.body,
+      plantId: req.body.plant_id || req.body.plantId || req.params.id,
+    });
     if (validationError) {
       return res.status(400).json({ message: validationError });
     }
 
-    const deviceId = req.body.deviceId;
-    const plantId = req.body.plant_id || req.body.plantId;
+    const deviceId = req.body.deviceId || req.body.device_id;
+    const plantId = req.body.plant_id || req.body.plantId || req.params.id;
     const userId = req.user.userId;
 
     const allowed = await checkPlantAccess(userId, plantId);
@@ -85,8 +89,41 @@ const addDeviceToPlant = async (req, res) => {
       return res.status(403).json({ message: "Access denied" });
     }
 
-    await assignDeviceToPlant(deviceId, plantId);
-    res.json({ status: "device added" });
+    const device = await assignDeviceToPlant(deviceId, plantId, userId);
+    res.json({ status: "device added", data: device });
+  } catch (err) {
+    if (err.message === "Device_ID_Required") {
+      return res.status(400).json({ message: "Device ID tidak boleh kosong" });
+    }
+
+    if (err.message === "Device_Not_Registered") {
+      return res.status(404).json({
+        message: "Device ID belum terdaftar. Hubungi admin.",
+      });
+    }
+
+    res.status(500).json({ message: err.message });
+  }
+};
+
+const getPlantDeviceData = async (req, res) => {
+  try {
+    const plantId = req.params.id;
+    const userId = req.user.userId;
+
+    const allowed = await checkPlantAccess(userId, plantId);
+    if (!allowed) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const devices = await getPlantDevices(plantId);
+    res.json({
+      status: "success",
+      data: {
+        plant: { id: plantId },
+        devices,
+      },
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -153,5 +190,6 @@ module.exports = {
   createPlant,
   addDeviceToPlant,
   assignUserToPlantByEmail,
+  getPlantDeviceData,
   getPlantData,
 };

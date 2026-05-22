@@ -1,4 +1,8 @@
 const db = require("../config/db");
+const {
+  isRegisteredDevice,
+  normalizeDeviceId,
+} = require("./deviceRegistry.service");
 
 // CHECK USER PUNYA PLANT
 const checkPlantAccess = async (userId, plantId) => {
@@ -35,11 +39,57 @@ const assignUserToPlant = async (email, plantId, role = "viewer") => {
 };
 
 // ASSIGN DEVICE KE PLANT
-const assignDeviceToPlant = async (deviceId, plantId) => {
-  return await db("plant_devices").insert({
-    device_id: deviceId,
-    plant_id: plantId,
+const assignDeviceToPlant = async (deviceId, plantId, userId) => {
+  const normalizedDeviceId = normalizeDeviceId(deviceId);
+
+  if (!normalizedDeviceId) {
+    throw new Error("Device_ID_Required");
+  }
+
+  const isRegistered = await isRegisteredDevice(normalizedDeviceId);
+
+  if (!isRegistered) {
+    throw new Error("Device_Not_Registered");
+  }
+
+  return db.transaction(async (trx) => {
+    const existingDevice = await trx("plant_devices")
+      .where({ device_id: normalizedDeviceId, plant_id: plantId })
+      .first();
+
+    const plantDevice =
+      existingDevice ||
+      (
+        await trx("plant_devices")
+          .insert({
+            device_id: normalizedDeviceId,
+            plant_id: plantId,
+          })
+          .returning("*")
+      )[0];
+
+    if (userId) {
+      await trx("device_access_permissions")
+        .insert({
+          user_id: userId,
+          plant_id: plantId,
+          device_id: normalizedDeviceId,
+          allowed: false,
+          updated_at: trx.fn.now(),
+        })
+        .onConflict(["user_id", "plant_id", "device_id"])
+        .ignore();
+    }
+
+    return plantDevice;
   });
+};
+
+const getPlantDevices = async (plantId) => {
+  return db("plant_devices")
+    .where({ plant_id: plantId })
+    .select("*")
+    .orderBy("device_id", "asc");
 };
 
 // UPDATE PLANT
@@ -68,6 +118,7 @@ module.exports = {
   assignUserToPlant,
   updatePlant,
   assignDeviceToPlant,
+  getPlantDevices,
   getPlants,
   create,
 };

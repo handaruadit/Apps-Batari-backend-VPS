@@ -1,4 +1,10 @@
 const db = require("../config/db");
+const {
+  getRegisteredDevices,
+  registerDevice,
+} = require("../services/deviceRegistry.service");
+
+const normalizeAllowed = (value) => value === true || value === "true";
 
 const getDeviceAccess = async (_req, res) => {
   try {
@@ -35,7 +41,7 @@ const getDeviceAccess = async (_req, res) => {
         plantId: row.plantId,
         plantName: row.plantName,
         deviceId: row.deviceId,
-        allowed: row.allowed,
+        allowed: normalizeAllowed(row.allowed),
       });
 
       return items;
@@ -73,27 +79,29 @@ const updateDeviceAccess = async (req, res) => {
       });
     }
 
-    await db("device_access_permissions")
+    const [permission] = await db("device_access_permissions")
       .insert({
         user_id: userId,
         plant_id: plantId,
         device_id: deviceId,
         allowed,
+        updated_at: db.fn.now(),
       })
       .onConflict(["user_id", "plant_id", "device_id"])
       .merge({
         allowed,
         updated_at: db.fn.now(),
-      });
+      })
+      .returning(["user_id", "plant_id", "device_id", "allowed"]);
 
     res.json({
       success: true,
       message: "Device access updated",
       data: {
-        userId,
-        plantId,
-        deviceId,
-        allowed,
+        userId: permission?.user_id ?? userId,
+        plantId: permission?.plant_id ?? plantId,
+        deviceId: permission?.device_id ?? deviceId,
+        allowed: normalizeAllowed(permission?.allowed ?? allowed),
       },
     });
   } catch (err) {
@@ -105,7 +113,50 @@ const updateDeviceAccess = async (req, res) => {
   }
 };
 
+const listRegisteredDevices = async (_req, res) => {
+  try {
+    const devices = await getRegisteredDevices();
+    res.json(devices);
+  } catch (err) {
+    console.error("Error fetching registered devices:", err);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+const createRegisteredDevice = async (req, res) => {
+  try {
+    const device = await registerDevice(req.body.deviceId ?? req.body.device_id);
+
+    res.status(201).json({
+      success: true,
+      message: "Device ID berhasil ditambahkan",
+      data: {
+        deviceId: device.deviceId,
+        createdAt: device.createdAt,
+      },
+    });
+  } catch (err) {
+    if (err.message === "Device_ID_Required") {
+      return res.status(400).json({
+        success: false,
+        message: "Device ID tidak boleh kosong",
+      });
+    }
+
+    console.error("Error creating registered device:", err);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
 module.exports = {
+  createRegisteredDevice,
   getDeviceAccess,
+  listRegisteredDevices,
   updateDeviceAccess,
 };
