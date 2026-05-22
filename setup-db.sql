@@ -5,9 +5,13 @@ CREATE TABLE IF NOT EXISTS users (
   email text UNIQUE NOT NULL,
   password text NOT NULL,
   phone text UNIQUE NOT NULL,
+  role text NOT NULL DEFAULT 'user',
   created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'user';
 
 CREATE TABLE IF NOT EXISTS plants (
   id bigserial PRIMARY KEY,
@@ -40,6 +44,17 @@ CREATE TABLE IF NOT EXISTS plant_devices (
   device_id text UNIQUE NOT NULL,
   plant_id bigint REFERENCES plants(id) ON DELETE CASCADE,
   created_at timestamp DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS device_access_permissions (
+  id bigserial PRIMARY KEY,
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  plant_id bigint NOT NULL REFERENCES plants(id) ON DELETE CASCADE,
+  device_id text NOT NULL,
+  allowed boolean NOT NULL DEFAULT false,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  UNIQUE (user_id, plant_id, device_id)
 );
 
 CREATE TABLE IF NOT EXISTS device_data (
@@ -85,12 +100,20 @@ CREATE INDEX IF NOT EXISTS idx_user_plants_plant_id
 CREATE INDEX IF NOT EXISTS idx_plant_devices_plant_id
   ON plant_devices (plant_id);
 
+CREATE INDEX IF NOT EXISTS idx_device_access_permissions_user_plant
+  ON device_access_permissions (user_id, plant_id);
+
+CREATE INDEX IF NOT EXISTS idx_device_access_permissions_device
+  ON device_access_permissions (device_id);
+
 GRANT USAGE, CREATE ON SCHEMA public TO apiuser;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO apiuser;
 GRANT SELECT, REFERENCES ON TABLE users TO apiuser;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE password_reset_codes TO apiuser;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE device_access_permissions TO apiuser;
 GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO apiuser;
 GRANT USAGE, SELECT, UPDATE ON SEQUENCE password_reset_codes_id_seq TO apiuser;
+GRANT USAGE, SELECT, UPDATE ON SEQUENCE device_access_permissions_id_seq TO apiuser;
 
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO apiuser;

@@ -57,10 +57,20 @@ const parseOptionalMetric = (body, keys, label) => {
     return { value: numericValue };
 };
 
+const sendDeviceAccessDenied = (res) => {
+    return res.status(403).json({
+        success: false,
+        message: "Akses device belum diizinkan oleh admin",
+    });
+};
+
+const isDeviceAccessDenied = (err) => err.message === "Access_Denied";
+
 const fetchDeviceData = async (req, res) => {
     try {
         const { plantId, category, limit, startDate, endDate, latestBy } = req.query;
         const userId = req.user.userId;
+        const role = req.user.role;
 
         if (!plantId) {
             return res.status(400).json({
@@ -69,7 +79,7 @@ const fetchDeviceData = async (req, res) => {
             });
         }
 
-        const deviceIds = await getDeviceIdData(userId, plantId);
+        const deviceIds = await getDeviceIdData(userId, plantId, role);
         console.log("🔍 Device IDs:", deviceIds);
 
         if (!deviceIds || deviceIds.length === 0) {
@@ -117,6 +127,10 @@ const fetchDeviceData = async (req, res) => {
         });
 
     } catch (err) {
+        if (isDeviceAccessDenied(err)) {
+            return sendDeviceAccessDenied(res);
+        }
+
         console.error("Error fetching device data:", err);
         res.status(500).json({ 
             status: "error", 
@@ -129,6 +143,7 @@ const getDaily = async (req, res) => {
     try {
         const { plantId, date, category } = req.query;
         const userId = req.user.userId;
+        const role = req.user.role;
         if (!plantId) {
             return res.status(400).json({
                 status: "error",
@@ -136,7 +151,7 @@ const getDaily = async (req, res) => {
             });
         }
 
-        const deviceIds = await getDeviceIdData(userId, plantId);
+        const deviceIds = await getDeviceIdData(userId, plantId, role);
 
         if (!deviceIds || deviceIds.length === 0) {
             return res.status(404).json({
@@ -175,6 +190,10 @@ const getDaily = async (req, res) => {
             data: formatted,
         });
     } catch (err) {
+        if (isDeviceAccessDenied(err)) {
+            return sendDeviceAccessDenied(res);
+        }
+
         res.status(500).json({ status: "error" });
     }
 };
@@ -183,6 +202,7 @@ const getMonthly = async (req, res) => {
     try {
         const { plantId, date, category } = req.query;
         const userId = req.user.userId;
+        const role = req.user.role;
         if (!plantId) {
             return res.status(400).json({
                 status: "error",
@@ -190,7 +210,7 @@ const getMonthly = async (req, res) => {
             });
         }
 
-        const deviceIds = await getDeviceIdData(userId, plantId);
+        const deviceIds = await getDeviceIdData(userId, plantId, role);
 
         if (!deviceIds || deviceIds.length === 0) {
             return res.status(404).json({
@@ -230,6 +250,10 @@ const getMonthly = async (req, res) => {
         });
 
     } catch (err) {
+        if (isDeviceAccessDenied(err)) {
+            return sendDeviceAccessDenied(res);
+        }
+
         res.status(500).json({ status: "error" });
     }
 };
@@ -238,6 +262,7 @@ const getYearly = async (req, res) => {
     try {
         const { plantId, date, category } = req.query;
         const userId = req.user.userId;
+        const role = req.user.role;
         if (!plantId) {
             return res.status(400).json({
                 status: "error",
@@ -245,7 +270,7 @@ const getYearly = async (req, res) => {
             });
         }
 
-        const deviceIds = await getDeviceIdData(userId, plantId);
+        const deviceIds = await getDeviceIdData(userId, plantId, role);
 
         if (!deviceIds || deviceIds.length === 0) {
             return res.status(404).json({
@@ -283,13 +308,20 @@ const getYearly = async (req, res) => {
             status: "success",
             data: formatted,
         });
-    } catch (err) {res.status(500).json({ status: err.message });}
+    } catch (err) {
+        if (isDeviceAccessDenied(err)) {
+            return sendDeviceAccessDenied(res);
+        }
+
+        res.status(500).json({ status: err.message });
+    }
 };
 
 const getLifetime = async (req, res) => {
     try {
         const { plantId, category } = req.query;
         const userId = req.user.userId;
+        const role = req.user.role;
         if (!plantId) {
             return res.status(400).json({
                 status: "error",
@@ -297,7 +329,7 @@ const getLifetime = async (req, res) => {
             });
         }
 
-        const deviceIds = await getDeviceIdData(userId, plantId);
+        const deviceIds = await getDeviceIdData(userId, plantId, role);
 
         if (!deviceIds || deviceIds.length === 0) {
             return res.status(404).json({
@@ -320,13 +352,20 @@ const getLifetime = async (req, res) => {
             status: "success",
             data,
         });
-    } catch (err) {res.status(500).json({ status: "error" });}
+    } catch (err) {
+        if (isDeviceAccessDenied(err)) {
+            return sendDeviceAccessDenied(res);
+        }
+
+        res.status(500).json({ status: "error" });
+    }
 };
 
 const getChart = async (req, res) => {
     try {
         const { plantId, segment = "day", date } = req.query;
         const userId = req.user.userId;
+        const role = req.user.role;
 
         if (!plantId) {
             return res.status(400).json({
@@ -336,7 +375,7 @@ const getChart = async (req, res) => {
             });
         }
 
-        const deviceIds = await getDeviceIdData(userId, plantId);
+        const deviceIds = await getDeviceIdData(userId, plantId, role);
 
         if (!deviceIds || deviceIds.length === 0) {
             return res.status(404).json({
@@ -371,12 +410,8 @@ const getChart = async (req, res) => {
             data: chartResult.data,
         });
     } catch (err) {
-        if (err.message === "Access_Denied") {
-            return res.status(403).json({
-                success: false,
-                status: "error",
-                message: "Access denied",
-            });
+        if (isDeviceAccessDenied(err)) {
+            return sendDeviceAccessDenied(res);
         }
 
         if (err.message === "Data_Not_Found") {
@@ -411,6 +446,7 @@ const getMonthlyChart = async (req, res) => {
     try {
         const { plantId, month, date } = req.query;
         const userId = req.user.userId;
+        const role = req.user.role;
         const requestedMonth = month || date;
 
         if (!plantId) {
@@ -429,7 +465,7 @@ const getMonthlyChart = async (req, res) => {
             });
         }
 
-        const deviceIds = await getDeviceIdData(userId, plantId);
+        const deviceIds = await getDeviceIdData(userId, plantId, role);
         const data = await getMonthlyChartData({
             deviceIds: deviceIds.map((d) => d.device_id),
             month: requestedMonth,
@@ -441,12 +477,8 @@ const getMonthlyChart = async (req, res) => {
             data,
         });
     } catch (err) {
-        if (err.message === "Access_Denied") {
-            return res.status(403).json({
-                success: false,
-                status: "error",
-                message: "Access denied",
-            });
+        if (isDeviceAccessDenied(err)) {
+            return sendDeviceAccessDenied(res);
         }
 
         if (err.message === "Data_Not_Found") {
@@ -478,6 +510,7 @@ const getYearlyChart = async (req, res) => {
     try {
         const { plantId, year, date } = req.query;
         const userId = req.user.userId;
+        const role = req.user.role;
         const requestedYear = year || date;
 
         if (!plantId) {
@@ -496,7 +529,7 @@ const getYearlyChart = async (req, res) => {
             });
         }
 
-        const deviceIds = await getDeviceIdData(userId, plantId);
+        const deviceIds = await getDeviceIdData(userId, plantId, role);
         const data = await getYearlyChartData({
             deviceIds: deviceIds.map((d) => d.device_id),
             year: requestedYear,
@@ -508,12 +541,8 @@ const getYearlyChart = async (req, res) => {
             data,
         });
     } catch (err) {
-        if (err.message === "Access_Denied") {
-            return res.status(403).json({
-                success: false,
-                status: "error",
-                message: "Access denied",
-            });
+        if (isDeviceAccessDenied(err)) {
+            return sendDeviceAccessDenied(res);
         }
 
         if (err.message === "Data_Not_Found") {

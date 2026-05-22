@@ -4,6 +4,9 @@ const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const { generateToken } = require("../config/jwt");
 
+const ADMIN_EMAIL = "admin@batarienergy.com";
+const ADMIN_PASSWORD = "password";
+
 const registerUser = async ({ email, password, phone }) => {
   const existingUser = await db("users").where({ email }).first();
   if (existingUser) {
@@ -22,7 +25,7 @@ const registerUser = async ({ email, password, phone }) => {
   const hashed = await bcrypt.hash(password, 10);
 
   const [user] = await db("users")
-    .insert({ email, password: hashed, phone: normalizedPhone })
+    .insert({ email, password: hashed, phone: normalizedPhone, role: "user" })
     .returning("*");
 
   return user;
@@ -36,9 +39,55 @@ const loginUser = async ({ email, password }) => {
   const valid = await bcrypt.compare(password, user.password);
   if (!valid) throw new Error("Wrong password");
 
-  const token = generateToken({ userId: user.id });
+  const role = user.role || "user";
+  const token = generateToken({
+    id: user.id,
+    userId: user.id,
+    email: user.email,
+    role,
+  });
 
-  return { token, user };
+  return {
+    token,
+    user: {
+      id: user.id,
+      email: user.email,
+      role,
+    },
+  };
+};
+
+const seedAdminUser = async () => {
+  const existingAdmin = await db("users").where({ email: ADMIN_EMAIL }).first();
+
+  if (existingAdmin) {
+    if (existingAdmin.role !== "admin") {
+      const [updatedAdmin] = await db("users")
+        .where({ id: existingAdmin.id })
+        .update({ role: "admin", updated_at: db.fn.now() })
+        .returning(["id", "email", "role"]);
+
+      return updatedAdmin;
+    }
+
+    return {
+      id: existingAdmin.id,
+      email: existingAdmin.email,
+      role: existingAdmin.role,
+    };
+  }
+
+  const hashed = await bcrypt.hash(ADMIN_PASSWORD, 10);
+  const [admin] = await db("users")
+    .insert({
+      email: ADMIN_EMAIL,
+      password: hashed,
+      phone: `email:${ADMIN_EMAIL}`,
+      role: "admin",
+    })
+    .returning(["id", "email", "role"]);
+
+  return admin;
 };
 
 const createResetCode = () => {
@@ -303,4 +352,5 @@ module.exports = {
   verifyPasswordResetCode,
   resetPassword,
   normalizePhoneNumber,
+  seedAdminUser,
 };
