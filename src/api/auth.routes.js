@@ -1,5 +1,4 @@
 const router = require("express").Router();
-const { generalLimiter } = require("../middlewares/rate.middleware");
 const {
   register,
   login,
@@ -8,10 +7,10 @@ const {
   updatePassword,
 } = require("../controllers/auth.controller");
 
-router.post("/register", generalLimiter, register);
-router.post("/login", generalLimiter, login);
-router.post("/forgot-password", generalLimiter, forgotPassword);
-router.post("/verify-reset-code", generalLimiter, verifyResetCode);
-router.post("/reset-password", generalLimiter, updatePassword);
+router.post("/register", register);
+router.post("/login", login);
+router.post("/forgot-password", forgotPassword);
+router.post("/verify-reset-code", verifyResetCode);
+router.post("/reset-password", updatePassword);
 
 module.exports = router;
