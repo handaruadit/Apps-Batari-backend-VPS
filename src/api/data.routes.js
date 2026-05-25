@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const auth = require("../middlewares/auth.middleware");
+const { generalLimiter } = require("../middlewares/rate.middleware");
 const { 
     sendManualPlantData,
     fetchDeviceData, 
@@ -14,7 +15,7 @@ const {
  } = require("../controllers/data.controller");
 
 // POST manual send endpoint for testing
-router.post("/manual/send", sendManualPlantData);
+router.post("/manual/send", generalLimiter, sendManualPlantData);
 
 // GET data endpoint
 router.get("/", auth, fetchDeviceData);
