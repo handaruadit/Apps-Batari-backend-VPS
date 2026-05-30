@@ -47,7 +47,13 @@ const CHART_SERIES_CONFIG = {
 };
 
 const DEFAULT_MOCK_CHART_POINTS_PER_DAY = 180;
-const MOCK_CHART_SERIES_KEYS = ["production", "load", "upsLoad", "grid", "battery"];
+const MOCK_CHART_SERIES_KEYS = [
+  "production",
+  "load",
+  "upsLoad",
+  "grid",
+  "battery",
+];
 
 const normalizeText = (value) =>
   String(value ?? "")
@@ -80,20 +86,16 @@ const isPowerResponseRow = (row) => {
 
   if (
     matchesAlias(row.category, CHART_CATEGORY_ALIASES.pv) &&
-    (
-      matchesAlias(row.type, CHART_TYPE_ALIASES.power) ||
-      matchesAlias(row.type, CHART_TYPE_ALIASES.chargePower)
-    )
+    (matchesAlias(row.type, CHART_TYPE_ALIASES.power) ||
+      matchesAlias(row.type, CHART_TYPE_ALIASES.chargePower))
   ) {
     return true;
   }
 
   if (
     matchesAlias(row.category, CHART_CATEGORY_ALIASES.load) &&
-    (
-      matchesAlias(row.type, CHART_TYPE_ALIASES.power) ||
-      matchesAlias(row.type, CHART_TYPE_ALIASES.vaPower)
-    )
+    (matchesAlias(row.type, CHART_TYPE_ALIASES.power) ||
+      matchesAlias(row.type, CHART_TYPE_ALIASES.vaPower))
   ) {
     return true;
   }
@@ -114,11 +116,9 @@ const isPowerResponseRow = (row) => {
 
   if (
     matchesAlias(row.category, CHART_CATEGORY_ALIASES.productionFlow) &&
-    (
-      matchesAlias(row.type, CHART_TYPE_ALIASES.pvGenerate) ||
+    (matchesAlias(row.type, CHART_TYPE_ALIASES.pvGenerate) ||
       matchesAlias(row.type, CHART_TYPE_ALIASES.export) ||
-      matchesAlias(row.type, CHART_TYPE_ALIASES.charge)
-    )
+      matchesAlias(row.type, CHART_TYPE_ALIASES.charge))
   ) {
     return true;
   }
@@ -154,7 +154,7 @@ const formatDbTimestamp = ({
     millisecond > 0 ? `.${String(millisecond).padStart(3, "0")}` : "";
 
   return `${year}-${padChartTwo(month)}-${padChartTwo(day)} ${padChartTwo(
-    hour
+    hour,
   )}:${padChartTwo(minute)}:${padChartTwo(second)}${milliseconds}`;
 };
 
@@ -372,7 +372,14 @@ const getDaysInMonth = (year, month) => new Date(year, month, 0).getDate();
 
 const padTwo = (value) => String(value).padStart(2, "0");
 
-const formatLocalTimestamp = ({ year, month, day, hour = 0, minute = 0, second = 0 }) =>
+const formatLocalTimestamp = ({
+  year,
+  month,
+  day,
+  hour = 0,
+  minute = 0,
+  second = 0,
+}) =>
   `${year}-${padTwo(month)}-${padTwo(day)}T${padTwo(hour)}:${padTwo(minute)}:${padTwo(second)}`;
 
 const buildMockDatePoints = (segment, date) => {
@@ -449,7 +456,8 @@ const getProductionValue = (point, random) => {
 
   const daylight = Math.sin(Math.PI * daylightProgress);
   const shaped = daylight ** 1.8;
-  const seasonal = point.seasonalSun === undefined ? 1 : 0.45 + point.seasonalSun * 0.55;
+  const seasonal =
+    point.seasonalSun === undefined ? 1 : 0.45 + point.seasonalSun * 0.55;
   return roundTwo(clamp(addNoise(shaped * 5 * seasonal, 0.25, random), 0, 5));
 };
 
@@ -458,7 +466,8 @@ const getMockValue = (seriesKey, point, random) => {
     return getProductionValue(point, random);
   }
 
-  const wave = (Math.sin(Math.PI * 2 * point.dayProgress - Math.PI / 3) + 1) / 2;
+  const wave =
+    (Math.sin(Math.PI * 2 * point.dayProgress - Math.PI / 3) + 1) / 2;
 
   if (seriesKey === "battery") {
     return roundTwo(clamp(addNoise((wave - 0.5) * 4, 0.35, random), -2, 2));
@@ -481,7 +490,9 @@ const buildMockChartSeries = ({ plantId, segment, date }) => {
       return;
     }
 
-    const random = createSeededRandom(`${plantId}:${segment}:${date || ""}:${seriesKey}`);
+    const random = createSeededRandom(
+      `${plantId}:${segment}:${date || ""}:${seriesKey}`,
+    );
 
     series[seriesKey] = points.map((point) => ({
       category: config.category,
@@ -513,16 +524,13 @@ const saveDeviceData = async (data) => {
     });
 
     await db("device_data").insert(formatted);
-
   } catch (err) {
     console.error("❌ DB Insert Error:", err.message);
   }
 };
 
 const findBatteryDeviceIdForPlant = async (plantName, preferredDeviceId) => {
-  const plant = await db("plants")
-    .where("name", plantName)
-    .first("id");
+  const plant = await db("plants").where("name", plantName).first("id");
 
   if (!plant) {
     console.warn(`Battery power skipped: plant not found for ${plantName}`);
@@ -539,11 +547,13 @@ const findBatteryDeviceIdForPlant = async (plantName, preferredDeviceId) => {
   }
 
   if (preferredDeviceId) {
-    const mappedDevice = devices.find((device) => device.device_id === preferredDeviceId);
+    const mappedDevice = devices.find(
+      (device) => device.device_id === preferredDeviceId,
+    );
 
     if (!mappedDevice) {
       console.warn(
-        `Battery power skipped: device ${preferredDeviceId} is not mapped to plant ${plantName}`
+        `Battery power skipped: device ${preferredDeviceId} is not mapped to plant ${plantName}`,
       );
       return null;
     }
@@ -568,7 +578,10 @@ const saveBatteryPowerForPlant = async ({ plantName, deviceId, powerKw }) => {
       return null;
     }
 
-    const targetDeviceId = await findBatteryDeviceIdForPlant(plantName, deviceId);
+    const targetDeviceId = await findBatteryDeviceIdForPlant(
+      plantName,
+      deviceId,
+    );
     if (!targetDeviceId) {
       return null;
     }
@@ -608,7 +621,7 @@ const getDeviceData = async (filters) => {
     // FILTER TYPE (SINGLE / MULTIPLE)
     if (filters.types?.length) {
       query = query.whereIn("type", filters.types);
-      countData = filters.types.length*filters.deviceIds.length;
+      countData = filters.types.length * filters.deviceIds.length;
     }
 
     // FILTER RANGE HARI
@@ -630,8 +643,8 @@ const getDeviceData = async (filters) => {
     query = query.limit(filters.limit || countData);
 
     return await query;
-
-  } catch (err) {console.error("❌ DB Fetch Error:", err.message);
+  } catch (err) {
+    console.error("❌ DB Fetch Error:", err.message);
     return [];
   }
 };
@@ -643,7 +656,10 @@ const getNumberOrNull = (value) => {
   return Number.isFinite(number) ? number : null;
 };
 
-const getTimeZoneDateParts = (date = new Date(), timeZone = ENERGY_TIME_ZONE) => {
+const getTimeZoneDateParts = (
+  date = new Date(),
+  timeZone = ENERGY_TIME_ZONE,
+) => {
   const formatter = new Intl.DateTimeFormat("en-GB", {
     timeZone,
     year: "numeric",
@@ -704,7 +720,11 @@ const chooseEnergyRows = (
     return preferredRows;
   }
 
-  const fallbackRows = getMetricRows(rows, categoryAliases, fallbackTypeAliases);
+  const fallbackRows = getMetricRows(
+    rows,
+    categoryAliases,
+    fallbackTypeAliases,
+  );
 
   if (preferredRows.length >= 2 || fallbackRows.length === 0) {
     return preferredRows;
@@ -740,10 +760,10 @@ const integrateRowsToKwh = (rows) => {
         timestamp: getRowTimestamp(row),
         id: Number(row.id || 0),
       }))
-      .filter(
-        (row) => row.value !== null && row.timestamp !== null,
-      )
-      .sort((left, right) => left.timestamp - right.timestamp || left.id - right.id);
+      .filter((row) => row.value !== null && row.timestamp !== null)
+      .sort(
+        (left, right) => left.timestamp - right.timestamp || left.id - right.id,
+      );
 
     if (sortedRows.length < 2) {
       return sum;
@@ -835,7 +855,8 @@ const getDailyKwhFromRows = (rows) => {
   };
 };
 
-const toChartUnit = (kwh) => roundChartEnergy(Math.abs(Number(kwh) || 0) / 1000);
+const toChartUnit = (kwh) =>
+  roundChartEnergy(Math.abs(Number(kwh) || 0) / 1000);
 
 const buildChartEnergyItem = (energy) => ({
   pv: toChartUnit(energy.pvKwh),
@@ -857,8 +878,7 @@ const sumDailyKwh = (dailyItems) =>
       pvGenerateKwh: total.pvGenerateKwh + item.pvGenerateKwh,
       exportKwh: total.exportKwh + item.exportKwh,
       chargeKwh: total.chargeKwh + item.chargeKwh,
-      totalConsumptionKwh:
-        total.totalConsumptionKwh + item.totalConsumptionKwh,
+      totalConsumptionKwh: total.totalConsumptionKwh + item.totalConsumptionKwh,
       totalProductionKwh: total.totalProductionKwh + item.totalProductionKwh,
     }),
     {
@@ -1010,9 +1030,7 @@ const buildEnergyPayload = ({
   const safePvGenerateKwh = roundTwo(pvGenerateKwh || 0);
   const safeExportKwh = roundTwo(exportKwh || 0);
   const safeChargeKwh = roundTwo(chargeKwh || 0);
-  const totalKwh = roundTwo(
-    safeConsumptionKwh + safeBatteryKwh + safeGridKwh,
-  );
+  const totalKwh = roundTwo(safeConsumptionKwh + safeBatteryKwh + safeGridKwh);
   const totalProductionKwh = roundTwo(
     safePvGenerateKwh + safeExportKwh + safeChargeKwh,
   );
@@ -1133,108 +1151,111 @@ const getLatestEnergyData = async ({ deviceIds }) => {
 
 // Fungsi Ambil Data Harian untuk Dashboard
 const getDailyData = async ({ deviceId, date, category, types }) => {
-    const start = new Date(date + "T00:00:00");
-    const end = new Date(date + "T23:59:59");
+  const start = new Date(date + "T00:00:00");
+  const end = new Date(date + "T23:59:59");
 
-    let query = db("device_data")
-        .whereIn("device_id", deviceId)
-        .whereBetween("created_at", [start, end]);
+  let query = db("device_data")
+    .whereIn("device_id", deviceId)
+    .whereBetween("created_at", [start, end]);
 
-    if (category) {
-        query = query.where("category", category);
-    }
+  if (category) {
+    query = query.where("category", category);
+  }
 
-    if (types && types.length > 0) {
-        query = query.whereIn("type", types);
-    }
+  if (types && types.length > 0) {
+    query = query.whereIn("type", types);
+  }
 
-    return await query.orderBy("created_at", "asc");
+  return await query.orderBy("created_at", "asc");
 };
 
 // Fungsi Ambil Data Bulanan untuk Dashboard
 const getMonthlyData = async ({ deviceId, month, category, types }) => {
-    const start = `${month}-01`;
-    const end = `${month}-31`;
-    
-    let query = db("device_data")
-        .select(
-            db.raw("TO_CHAR(created_at, 'YYYY-MM-DD') as date"),
-            "category",
-            "type",
-            db.raw("SUM(value::numeric) as sum"),
-            db.raw("ROUND(AVG(value::numeric), 2) as avg"), 
-            db.raw("MAX(value::numeric) as max"), 
-            db.raw("MIN(value::numeric) as min")
-        ).whereIn("device_id", deviceId)
-        .whereBetween("created_at", [start, end]);
+  const start = `${month}-01`;
+  const end = `${month}-31`;
 
-    if (category) {
-        query = query.where("category", category);
-    }
+  let query = db("device_data")
+    .select(
+      db.raw("TO_CHAR(created_at, 'YYYY-MM-DD') as date"),
+      "category",
+      "type",
+      db.raw("SUM(value::numeric) as sum"),
+      db.raw("ROUND(AVG(value::numeric), 2) as avg"),
+      db.raw("MAX(value::numeric) as max"),
+      db.raw("MIN(value::numeric) as min"),
+    )
+    .whereIn("device_id", deviceId)
+    .whereBetween("created_at", [start, end]);
 
-    if (types && types.length > 0) {
-        query = query.whereIn("type", types);
-    }
+  if (category) {
+    query = query.where("category", category);
+  }
 
-    return await query
-        .groupBy("date", "category", "type")
-        .orderBy(["date", "category", "type"]);
+  if (types && types.length > 0) {
+    query = query.whereIn("type", types);
+  }
+
+  return await query
+    .groupBy("date", "category", "type")
+    .orderBy(["date", "category", "type"]);
 };
 
 // Fungsi Ambil Data Tahunan untuk Dashboard
 const getYearlyData = async ({ deviceId, year, category, types }) => {
-    const start = `${year}-01-01`;
-    const end = `${year}-12-31`;
+  const start = `${year}-01-01`;
+  const end = `${year}-12-31`;
 
-    let query = db("device_data")
-        .select(
-            db.raw("TO_CHAR(created_at, 'YYYY-MM') as month"),
-            "category",
-            "type",
-            db.raw("SUM(value::numeric) as sum"),
-            db.raw("ROUND(AVG(value::numeric), 2) as avg"), 
-            db.raw("MAX(value::numeric) as max"), 
-            db.raw("MIN(value::numeric) as min")
-        ).whereIn("device_id", deviceId)
-        .whereBetween("created_at", [start, end]);
+  let query = db("device_data")
+    .select(
+      db.raw("TO_CHAR(created_at, 'YYYY-MM') as month"),
+      "category",
+      "type",
+      db.raw("SUM(value::numeric) as sum"),
+      db.raw("ROUND(AVG(value::numeric), 2) as avg"),
+      db.raw("MAX(value::numeric) as max"),
+      db.raw("MIN(value::numeric) as min"),
+    )
+    .whereIn("device_id", deviceId)
+    .whereBetween("created_at", [start, end]);
 
-    if (category) {
-        query = query.where("category", category);
-    }
+  if (category) {
+    query = query.where("category", category);
+  }
 
-    if (types && types.length > 0) {
-        query = query.whereIn("type", types);
-    }
+  if (types && types.length > 0) {
+    query = query.whereIn("type", types);
+  }
 
-    return await query
-        .groupBy("month", "category", "type")
-        .orderBy(["month", "category", "type"]);
+  return await query
+    .groupBy("month", "category", "type")
+    .orderBy(["month", "category", "type"]);
 };
 
 // Fungsi Ambil Data Lifetime untuk Dashboard
 const getLifetimeData = async ({ deviceId, category, types }) => {
-    let query = db("device_data")
-        .select(
-            db.raw("TO_CHAR(created_at, 'YYYY') as year"),
-            "category",
-            "type",
-            db.raw("SUM(value::numeric) as sum"),
-            db.raw("ROUND(AVG(value::numeric), 2) as avg"), 
-            db.raw("MAX(value::numeric) as max"), 
-            db.raw("MIN(value::numeric) as min")
-        ).whereIn("device_id", deviceId);
+  let query = db("device_data")
+    .select(
+      db.raw("TO_CHAR(created_at, 'YYYY') as year"),
+      "category",
+      "type",
+      db.raw("SUM(value::numeric) as sum"),
+      db.raw("ROUND(AVG(value::numeric), 2) as avg"),
+      db.raw("MAX(value::numeric) as max"),
+      db.raw("MIN(value::numeric) as min"),
+    )
+    .whereIn("device_id", deviceId);
 
-    if (category) {
-        query = query.where("category", category);
-    }
+  if (category) {
+    query = query.where("category", category);
+  }
 
-    if (types && types.length > 0) {
-        query = query.whereIn("type", types);
-    }
+  if (types && types.length > 0) {
+    query = query.whereIn("type", types);
+  }
 
-    return await query
-        .groupBy("year", "category", "type")
-        .orderBy(["year", "category", "type"]);
+  return await query
+    .groupBy("year", "category", "type")
+    .orderBy(["year", "category", "type"]);
 };
 
 const getChartData = async ({ plantId, deviceIds, segment, date }) => {
@@ -1360,30 +1381,32 @@ const getDeviceIdData = async (userId, plantId) => {
   const devices = await db("plant_devices")
     .where("plant_id", plantId)
     .select("device_id");
-  
+
   if (devices.length === 0) {
     throw new Error("Data_Not_Found");
   }
+
+  console.log("PLANT_ID =", plantId);
+  console.log("DEVICES =", devices);
 
   return devices;
 };
 
 module.exports = {
-    saveDeviceData,
-    saveBatteryPowerForPlant,
-    roundPowerKw,
-    formatDeviceDataForResponse,
-    getDeviceData,
-    getDailyData,
-    getMonthlyData,
-    getYearlyData,
-    getLifetimeData,
-    getChartData,
-    getMonthlyChartData,
-    getYearlyChartData,
-    getLatestEnergyData,
-    // formatByType,
-    checkDeviceAccess,
-    getDeviceIdData,
+  saveDeviceData,
+  saveBatteryPowerForPlant,
+  roundPowerKw,
+  formatDeviceDataForResponse,
+  getDeviceData,
+  getDailyData,
+  getMonthlyData,
+  getYearlyData,
+  getLifetimeData,
+  getChartData,
+  getMonthlyChartData,
+  getYearlyChartData,
+  getLatestEnergyData,
+  // formatByType,
+  checkDeviceAccess,
+  getDeviceIdData,
 };
-
