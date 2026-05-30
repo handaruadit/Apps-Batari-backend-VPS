@@ -6,16 +6,27 @@ const {
 
 const ACCESS_ROLES = {
   OWNER: "owner",
-  ONLY_VIEW: "only_view",
-  CAN_MANAGE: "can_manage",
+  ONLY_VIEW: "viewer",
+  CAN_MANAGE: "editor",
 };
 
 const normalizeAccessRole = (role) => {
-  const normalized = String(role || "").trim().toLowerCase();
+  const normalized = String(role || "")
+    .trim()
+    .toLowerCase();
 
-  if (normalized === ACCESS_ROLES.OWNER) return ACCESS_ROLES.OWNER;
-  if (normalized === ACCESS_ROLES.CAN_MANAGE || normalized === "manager") {
+  if (normalized === "owner") {
+    return ACCESS_ROLES.OWNER;
+  }
+
+  if (
+    ["editor", "can_manage", "manage_access", "manager"].includes(normalized)
+  ) {
     return ACCESS_ROLES.CAN_MANAGE;
+  }
+
+  if (["viewer", "only_view", "view_only", "view"].includes(normalized)) {
+    return ACCESS_ROLES.ONLY_VIEW;
   }
 
   return ACCESS_ROLES.ONLY_VIEW;
@@ -82,15 +93,17 @@ const getPlants = async (userId) => {
 };
 
 // ASSIGN PLANT KE USER
-const assignUserToPlant = async (email, plantId, role = ACCESS_ROLES.ONLY_VIEW) => {
-  const user = await db("users")
-    .where({ email })
-    .first();
+const assignUserToPlant = async (
+  email,
+  plantId,
+  role = ACCESS_ROLES.ONLY_VIEW,
+) => {
+  const user = await db("users").where({ email }).first();
 
   if (!user) {
     throw new Error("User not found");
   }
-  
+
   const accessRole = normalizeAccessRole(role);
 
   const existing = await db("user_plants")
@@ -143,19 +156,14 @@ const getPlantDevices = async (plantId) => {
   return db("plant_devices as pd")
     .leftJoin("device_data as dd", "dd.device_id", "pd.device_id")
     .where("pd.plant_id", plantId)
-    .select(
-      "pd.*",
-      db.raw("MAX(dd.created_at) as latest_data_at"),
-    )
+    .select("pd.*", db.raw("MAX(dd.created_at) as latest_data_at"))
     .groupBy("pd.id")
     .orderBy("pd.device_id", "asc");
 };
 
 // UPDATE PLANT
 const updatePlant = async (plantId, data) => {
-  return await db("plants")
-    .where({ id: plantId })
-    .update(data);
+  return await db("plants").where({ id: plantId }).update(data);
 };
 
 const deletePlant = async (plantId) => {
@@ -164,9 +172,7 @@ const deletePlant = async (plantId) => {
 
 // CREATE PLANT
 const create = async (data, userId) => {
-  const [plant] = await db("plants")
-      .insert(data)
-      .returning("*");
+  const [plant] = await db("plants").insert(data).returning("*");
   await db("user_plants").insert({
     user_id: userId,
     plant_id: plant.id,
@@ -209,9 +215,7 @@ const searchRegisteredUsers = async ({ query, excludePlantId }) => {
   const pattern = `%${text}%`;
   const rows = await db("users as u")
     .where((builder) => {
-      builder
-        .whereILike("u.email", pattern)
-        .orWhereILike("u.phone", pattern);
+      builder.whereILike("u.email", pattern).orWhereILike("u.phone", pattern);
     })
     .modify((builder) => {
       if (excludePlantId) {
@@ -229,7 +233,11 @@ const searchRegisteredUsers = async ({ query, excludePlantId }) => {
   return rows;
 };
 
-const addPlantAccess = async ({ plantId, userId, role = ACCESS_ROLES.ONLY_VIEW }) => {
+const addPlantAccess = async ({
+  plantId,
+  userId,
+  role = ACCESS_ROLES.ONLY_VIEW,
+}) => {
   const accessRole = normalizeAccessRole(role);
 
   if (accessRole === ACCESS_ROLES.OWNER) {
