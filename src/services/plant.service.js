@@ -158,10 +158,22 @@ const getPlantDevices = async (plantId) => {
     .orderBy("device_id", "asc");
 
   for (const device of devices) {
-    device.latestData = await db("device_data")
-      .where("device_id", device.device_id)
-      .whereIn("category", ["data_bms", "baterai", "setting_bms"])
-      .orderBy("created_at", "desc");
+    const latestRows = await db.raw(
+      `
+      SELECT DISTINCT ON (category, type)
+        category,
+        type,
+        value,
+        created_at
+      FROM device_data
+      WHERE device_id = ?
+        AND category IN ('data_bms','baterai','setting_bms')
+      ORDER BY category, type, created_at DESC
+      `,
+      [device.device_id],
+    );
+
+    device.latestData = latestRows.rows;
   }
 
   return devices;
