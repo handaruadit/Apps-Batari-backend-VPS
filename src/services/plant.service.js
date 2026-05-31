@@ -153,12 +153,18 @@ const assignDeviceToPlant = async (deviceId, plantId, userId) => {
 };
 
 const getPlantDevices = async (plantId) => {
-  return db("plant_devices as pd")
-    .leftJoin("device_data as dd", "dd.device_id", "pd.device_id")
-    .where("pd.plant_id", plantId)
-    .select("pd.*", db.raw("MAX(dd.created_at) as latest_data_at"))
-    .groupBy("pd.id")
-    .orderBy("pd.device_id", "asc");
+  const devices = await db("plant_devices")
+    .where("plant_id", plantId)
+    .orderBy("device_id", "asc");
+
+  for (const device of devices) {
+    device.latestData = await db("device_data")
+      .where("device_id", device.device_id)
+      .whereIn("category", ["data_bms", "baterai", "setting_bms"])
+      .orderBy("created_at", "desc");
+  }
+
+  return devices;
 };
 
 // UPDATE PLANT
