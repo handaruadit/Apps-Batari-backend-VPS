@@ -12,7 +12,7 @@ const server = http.createServer(app);
 
 // init websocket
 initSocket(server);
-startAutomaticPlantDataSender();
+// startAutomaticPlantDataSender();
 
 const PORT = process.env.PORT || 3001;
 const HOST = '0.0.0.0';
