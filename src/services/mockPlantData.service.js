@@ -270,19 +270,8 @@ const ensureTargetDeviceId = async ({ plantId, deviceId, strictDevice = false })
   if (mappedDevice) {
     return mappedDevice.device_id;
   }
-
-  if (strictDevice) {
-    throw new Error("Device_Not_Found");
-  }
-
-  const generatedDeviceId = `mock-plant-${plantId}`;
-
-  await db("plant_devices").insert({
-    device_id: generatedDeviceId,
-    plant_id: plantId,
-  });
-
-  return generatedDeviceId;
+  
+  throw new Error("Device_Not_Found");
 };
 
 const getHourFraction = (date, timeZone) => {
