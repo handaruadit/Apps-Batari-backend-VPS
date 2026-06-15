@@ -113,7 +113,7 @@ const assignUserToPlant = async (
   if (existing) {
     return db("user_plants")
       .where({ id: existing.id })
-      .update({ role: accessRole, updated_at: db.fn.now() });
+      .update({ role: accessRole });
   }
 
   return await db("user_plants").insert({
@@ -210,16 +210,16 @@ const getPlantAccessList = async (plantId) => {
       "u.phone",
       "up.role",
       "up.created_at as createdAt",
-      "up.updated_at as updatedAt",
     )
     .orderByRaw(
-      "CASE WHEN up.role = 'owner' THEN 0 WHEN up.role = 'can_manage' THEN 1 ELSE 2 END",
+      "CASE WHEN up.role = 'owner' THEN 0 WHEN up.role = 'editor' THEN 1 ELSE 2 END",
     )
     .orderBy("u.email", "asc");
 
   return rows.map((row) => ({
     ...row,
     role: normalizeAccessRole(row.role),
+    updatedAt: row.createdAt,
   }));
 };
 
@@ -274,7 +274,7 @@ const addPlantAccess = async ({
   if (existing) {
     const [updatedAccess] = await db("user_plants")
       .where({ id: existing.id })
-      .update({ role: accessRole, updated_at: db.fn.now() })
+      .update({ role: accessRole })
       .returning("*");
     return updatedAccess;
   }
@@ -311,7 +311,6 @@ const updatePlantAccess = async ({ plantId, userId, role }) => {
     .where({ plant_id: plantId, user_id: userId })
     .update({
       role: accessRole,
-      updated_at: db.fn.now(),
     })
     .returning("*");
 
