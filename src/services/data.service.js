@@ -332,7 +332,11 @@ const buildChartSeries = (rows) => {
     upsLoad: upsLoadRows.length ? upsLoadRows : loadRows,
     grid: gridRows,
     battery: batteryRows,
-    pvGenerate: pvGenerateRows,
+    pvGenerate: pvGenerateRows.length
+      ? pvGenerateRows
+      : productionRows.length
+        ? productionRows
+        : pvPowerRows,
     export: exportRows,
     charge: chargeRows,
   };
@@ -769,6 +773,33 @@ const chooseEnergyRows = (
   return preferredRows.length ? preferredRows : fallbackRows;
 };
 
+const choosePvGenerateEnergyRows = (rows, fallbackPvRows = null) => {
+  const pvGenerateRows = chooseEnergyRows(
+    rows,
+    CHART_CATEGORY_ALIASES.productionFlow,
+    CHART_TYPE_ALIASES.pvGenerate,
+  );
+
+  if (pvGenerateRows.length >= 2) {
+    return pvGenerateRows;
+  }
+
+  const pvRows =
+    fallbackPvRows ||
+    chooseEnergyRows(
+      rows,
+      CHART_CATEGORY_ALIASES.pv,
+      CHART_TYPE_ALIASES.chargePower,
+      CHART_TYPE_ALIASES.power,
+    );
+
+  if (pvRows.length >= 2) {
+    return pvRows;
+  }
+
+  return pvGenerateRows.length ? pvGenerateRows : pvRows;
+};
+
 const integrateRowsToKwh = (rows) => {
   if (!Array.isArray(rows) || rows.length < 2) {
     return 0;
@@ -850,13 +881,7 @@ const getDailyKwhFromRows = (rows) => {
     ),
   );
   const pvGenerateKwh = positiveKwh(
-    integrateRowsToKwh(
-      chooseEnergyRows(
-        rows,
-        CHART_CATEGORY_ALIASES.productionFlow,
-        CHART_TYPE_ALIASES.pvGenerate,
-      ),
-    ),
+    integrateRowsToKwh(choosePvGenerateEnergyRows(rows, pvRows)),
   );
   const exportKwh = positiveKwh(
     integrateRowsToKwh(
@@ -1158,11 +1183,7 @@ const getLatestEnergyData = async ({ deviceIds }) => {
         ),
       ),
       pvGenerateKwh: integrateRowsToKwh(
-        chooseEnergyRows(
-          rows,
-          CHART_CATEGORY_ALIASES.productionFlow,
-          CHART_TYPE_ALIASES.pvGenerate,
-        ),
+        choosePvGenerateEnergyRows(rows, pvRows),
       ),
       exportKwh: integrateRowsToKwh(
         chooseEnergyRows(
