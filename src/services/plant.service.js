@@ -153,6 +153,27 @@ const assignDeviceToPlant = async (deviceId, plantId, userId) => {
   });
 };
 
+const removePlantDevice = async (deviceId, plantId) => {
+  const normalizedDeviceId = normalizeDeviceId(deviceId);
+
+  if (!normalizedDeviceId) {
+    throw new Error("Device_ID_Required");
+  }
+
+  const deletedCount = await db("plant_devices")
+    .where({ device_id: normalizedDeviceId, plant_id: plantId })
+    .del();
+
+  if (!deletedCount) {
+    throw new Error("Plant_Device_Not_Found");
+  }
+
+  return {
+    plantId,
+    deviceId: normalizedDeviceId,
+  };
+};
+
 const getPlantDevices = async (plantId) => {
   const devices = await db("plant_devices")
     .where("plant_id", plantId)
@@ -347,6 +368,7 @@ module.exports = {
   updatePlant,
   updatePlantAccess,
   assignDeviceToPlant,
+  removePlantDevice,
   getPlantDevices,
   getPlants,
   removePlantAccess,

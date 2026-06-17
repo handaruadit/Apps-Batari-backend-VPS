@@ -10,6 +10,7 @@ const {
   getPlantDevices,
   getPlants,
   isPlantOwner,
+  removePlantDevice,
   removePlantAccess,
   searchRegisteredUsers,
   updatePlant,
@@ -148,6 +149,47 @@ const getPlantDeviceData = async (req, res) => {
       },
     });
   } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+const removeDeviceFromPlant = async (req, res) => {
+  try {
+    const plantId = req.params.id;
+    const deviceId = req.params.deviceId;
+    const userId = req.user.userId;
+
+    if (!plantId) {
+      return res.status(400).json({ message: "plant_id is required" });
+    }
+
+    if (!deviceId) {
+      return res.status(400).json({ message: "deviceId is required" });
+    }
+
+    const allowed = await canManagePlant(userId, plantId);
+    if (!allowed) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const removedDevice = await removePlantDevice(deviceId, plantId);
+
+    res.json({
+      message: "Device berhasil dilepas dari plant.",
+      plantId: removedDevice.plantId,
+      deviceId: removedDevice.deviceId,
+    });
+  } catch (err) {
+    if (err.message === "Device_ID_Required") {
+      return res.status(400).json({ message: "Device ID tidak boleh kosong" });
+    }
+
+    if (err.message === "Plant_Device_Not_Found") {
+      return res.status(404).json({
+        message: "Device tidak ditemukan pada plant ini.",
+      });
+    }
+
     res.status(500).json({ message: err.message });
   }
 };
@@ -379,6 +421,7 @@ module.exports = {
   getPlantAccessData,
   getPlantDeviceData,
   getPlantData,
+  removeDeviceFromPlant,
   removePlantAccessUser,
   searchPlantAccessUsers,
   updatePlantAccessUser,

@@ -9,6 +9,7 @@ const {
   getPlantAccessData,
   getPlantData,
   getPlantDeviceData,
+  removeDeviceFromPlant,
   removePlantAccessUser,
   searchPlantAccessUsers,
   updatePlantAccessUser,
@@ -34,6 +35,7 @@ router.delete("/:id/access/:userId", auth, removePlantAccessUser);
 // plant devices
 router.post("/:id/device", auth, addDeviceToPlant);
 router.get("/:id/devices", auth, getPlantDeviceData);
+router.delete("/:id/device/:deviceId", auth, removeDeviceFromPlant);
 
 // update/delete plant
 router.put("/:id", auth, updatePlantData);
