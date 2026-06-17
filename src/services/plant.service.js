@@ -1,4 +1,5 @@
 const db = require("../config/db");
+const { formatDeviceDataForResponse } = require("./data.service");
 const {
   normalizeDeviceId,
   registerDevice,
@@ -133,7 +134,7 @@ const assignDeviceToPlant = async (deviceId, plantId, userId) => {
 
   return db.transaction(async (trx) => {
     await registerDevice(normalizedDeviceId);
-
+    
     const existingDevice = await trx("plant_devices")
       .where({ device_id: normalizedDeviceId, plant_id: plantId })
       .first();
@@ -173,7 +174,7 @@ const getPlantDevices = async (plantId) => {
       [device.device_id],
     );
 
-    device.latestData = latestRows.rows;
+    device.latestData = latestRows.rows.map(formatDeviceDataForResponse);
   }
 
   return devices;

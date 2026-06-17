@@ -32,8 +32,9 @@ const CHART_TYPE_ALIASES = {
 };
 
 const CHART_ALLOWED_SEGMENTS = ["day", "month", "year", "lifetime"];
-const CHART_ENERGY_UNIT = "MWh";
+const CHART_ENERGY_UNIT = "kWh";
 const CHART_ENERGY_SOURCE = "backend-daily-kwh";
+const POWER_WATT_INFERENCE_ABS_MIN = 20;
 
 const CHART_SERIES_CONFIG = {
   production: { category: "pv", type: "chargePower" },
@@ -66,7 +67,37 @@ const matchesAlias = (value, aliases) => {
   return aliases.some((alias) => normalizeText(alias) === normalizedValue);
 };
 
-// Format power values for API response only. Do not use before energy calculations.
+const getRowUnit = (row) =>
+  row?.unit ?? row?.units ?? row?.measurement_unit ?? row?.measurementUnit;
+
+const isWattUnit = (unit) => matchesAlias(unit, ["w", "watt", "watts"]);
+const isKilowattUnit = (unit) =>
+  matchesAlias(unit, ["kw", "kilowatt", "kilowatts"]);
+
+const shouldTreatPowerValueAsWatt = (value, row) => {
+  const unit = getRowUnit(row);
+
+  if (isWattUnit(unit)) {
+    return true;
+  }
+
+  if (isKilowattUnit(unit)) {
+    return false;
+  }
+
+  return Math.abs(value) >= POWER_WATT_INFERENCE_ABS_MIN;
+};
+
+const normalizePowerKw = (value, row = {}) => {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return null;
+  }
+
+  return shouldTreatPowerValueAsWatt(number, row) ? number / 1000 : number;
+};
+
 const roundPowerKw = (value) => {
   const num = Number(value);
 
@@ -131,7 +162,7 @@ const formatPowerValueForResponse = (row) => {
     return row?.value;
   }
 
-  return roundPowerKw(row?.value);
+  return roundPowerKw(normalizePowerKw(row?.value, row));
 };
 
 const formatDeviceDataForResponse = (row) => ({
@@ -350,16 +381,17 @@ const createSeededRandom = (seedText) => {
 };
 
 const roundTwo = (value) => Number(value.toFixed(2));
-const positiveKwh = (value) => roundTwo(Math.abs(Number(value) || 0));
-const roundChartEnergy = (value) => {
+const roundEnergyKwh = (value) => {
   const number = Number(value);
 
   if (!Number.isFinite(number)) {
     return 0;
   }
 
-  return Number(number.toFixed(4));
+  return Number(number.toFixed(5));
 };
+const positiveKwh = (value) => roundEnergyKwh(Math.abs(Number(value) || 0));
+const roundChartEnergy = roundEnergyKwh;
 
 const addNoise = (value, range, random) => {
   const noise = (random() - 0.5) * range;
@@ -756,7 +788,9 @@ const integrateRowsToKwh = (rows) => {
   const total = Object.values(rowsByDevice).reduce((sum, deviceRows) => {
     const sortedRows = deviceRows
       .map((row) => ({
-        value: getNumberOrNull(row.value),
+        value: isPowerResponseRow(row)
+          ? normalizePowerKw(row.value, row)
+          : getNumberOrNull(row.value),
         timestamp: getRowTimestamp(row),
         id: Number(row.id || 0),
       }))
@@ -786,7 +820,7 @@ const integrateRowsToKwh = (rows) => {
     return sum + deviceKwh;
   }, 0);
 
-  return Number.isFinite(total) ? roundTwo(total) : 0;
+  return Number.isFinite(total) ? roundEnergyKwh(total) : 0;
 };
 
 const getDailyKwhFromRows = (rows) => {
@@ -850,13 +884,13 @@ const getDailyKwhFromRows = (rows) => {
     pvGenerateKwh,
     exportKwh,
     chargeKwh,
-    totalConsumptionKwh: roundTwo(pvKwh + gridKwh + batteryKwh),
-    totalProductionKwh: roundTwo(pvGenerateKwh + exportKwh + chargeKwh),
+    totalConsumptionKwh: roundEnergyKwh(pvKwh + gridKwh + batteryKwh),
+    totalProductionKwh: roundEnergyKwh(pvGenerateKwh + exportKwh + chargeKwh),
   };
 };
 
 const toChartUnit = (kwh) =>
-  roundChartEnergy(Math.abs(Number(kwh) || 0) / 1000);
+  roundChartEnergy(Math.abs(Number(kwh) || 0));
 
 const buildChartEnergyItem = (energy) => ({
   pv: toChartUnit(energy.pvKwh),
@@ -1024,14 +1058,16 @@ const buildEnergyPayload = ({
   exportKwh = 0,
   chargeKwh = 0,
 }) => {
-  const safeConsumptionKwh = roundTwo(consumptionKwh || 0);
-  const safeBatteryKwh = roundTwo(batteryKwh || 0);
-  const safeGridKwh = roundTwo(gridKwh || 0);
-  const safePvGenerateKwh = roundTwo(pvGenerateKwh || 0);
-  const safeExportKwh = roundTwo(exportKwh || 0);
-  const safeChargeKwh = roundTwo(chargeKwh || 0);
-  const totalKwh = roundTwo(safeConsumptionKwh + safeBatteryKwh + safeGridKwh);
-  const totalProductionKwh = roundTwo(
+  const safeConsumptionKwh = roundEnergyKwh(consumptionKwh || 0);
+  const safeBatteryKwh = roundEnergyKwh(batteryKwh || 0);
+  const safeGridKwh = roundEnergyKwh(gridKwh || 0);
+  const safePvGenerateKwh = roundEnergyKwh(pvGenerateKwh || 0);
+  const safeExportKwh = roundEnergyKwh(exportKwh || 0);
+  const safeChargeKwh = roundEnergyKwh(chargeKwh || 0);
+  const totalKwh = roundEnergyKwh(
+    safeConsumptionKwh + safeBatteryKwh + safeGridKwh,
+  );
+  const totalProductionKwh = roundEnergyKwh(
     safePvGenerateKwh + safeExportKwh + safeChargeKwh,
   );
   const hasTotal = totalKwh !== 0;
