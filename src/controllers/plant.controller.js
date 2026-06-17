@@ -7,6 +7,7 @@ const {
   create,
   deletePlant: deletePlantService,
   getPlantAccessList,
+  getPlantById,
   getPlantDevices,
   getPlants,
   isPlantOwner,
@@ -141,10 +142,11 @@ const getPlantDeviceData = async (req, res) => {
     }
 
     const devices = await getPlantDevices(plantId);
+    const plant = await getPlantById(plantId);
     res.json({
       status: "success",
       data: {
-        plant: { id: plantId },
+        plant: plant || { id: plantId },
         devices,
       },
     });

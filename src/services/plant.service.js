@@ -201,6 +201,13 @@ const getPlantDevices = async (plantId) => {
   return devices;
 };
 
+const getPlantById = async (plantId) => {
+  return db("plants")
+    .select("id", "name", "location", "city", "province")
+    .where({ id: plantId })
+    .first();
+};
+
 // UPDATE PLANT
 const updatePlant = async (plantId, data) => {
   return await db("plants").where({ id: plantId }).update(data);
@@ -364,6 +371,7 @@ module.exports = {
   deletePlant,
   getPlantAccessList,
   getPlantAccessRole,
+  getPlantById,
   getRoleFlags,
   updatePlant,
   updatePlantAccess,
