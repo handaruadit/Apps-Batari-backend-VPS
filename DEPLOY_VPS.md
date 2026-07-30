@@ -118,6 +118,8 @@ File ini akan membuat tabel jika belum ada:
 - `plants`
 - `user_plants`
 - `plant_devices`
+- `registered_devices`
+- `device_access_permissions`
 - `device_data`
 - `password_reset_codes`
 
@@ -158,6 +160,7 @@ MQTT_USERNAME=
 MQTT_PASSWORD=
 
 MOCK_PLANT_ENABLED=false
+MOCK_PLANT_ID=1
 MOCK_PLANT_NAME=Plant Testing
 MOCK_PLANT_INTERVAL_MS=300000
 
@@ -172,9 +175,21 @@ Ganti:
 
 Jangan commit file `.env` ke GitHub.
 
+Catatan MockPlant:
+
+- Automatic sender tersedia, tetapi pemanggilannya di `src/index.js` tidak diaktifkan secara default.
+- `MOCK_PLANT_ENABLED` hanya diperiksa ketika fungsi automatic sender dipanggil.
+- Endpoint manual `POST /api/data/manual/send` tetap aktif untuk testing.
+
 ## 8. Test backend manual
 
-Jalankan:
+Jalankan test terlebih dahulu:
+
+```bash
+npm test
+```
+
+Jika seluruh test lulus, jalankan:
 
 ```bash
 npm start
@@ -360,6 +375,7 @@ Wajib untuk VPS:
 Opsional:
 
 - `MOCK_PLANT_ENABLED`
+- `MOCK_PLANT_ID`
 - `MOCK_PLANT_NAME`
 - `MOCK_PLANT_INTERVAL_MS`
 - `MOCK_CHART_ENABLED`

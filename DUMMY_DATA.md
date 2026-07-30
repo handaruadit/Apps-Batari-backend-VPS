@@ -1,26 +1,22 @@
-# Persistent Dummy Device Data
+# MockPlant dan dummy chart
 
-Backend ini dapat membuat data dummy random secara otomatis dan menyimpannya permanen ke PostgreSQL. Frontend tetap membaca grafik dari endpoint `/api/data/chart`; AsyncStorage di aplikasi hanya cache/fallback lokal.
+Backend memiliki dua mekanisme dummy yang berbeda:
 
-## Cara kerja
+1. **MockPlant persisten** — menulis data ke PostgreSQL dan mengirim pembaruan Socket.IO.
+2. **Mock chart fallback** — hanya membuat response chart ketika data database kosong dan tidak melakukan insert.
 
-- Generator berjalan saat server Node.js start melalui `startAutomaticPlantDataSender()`.
-- Target default adalah `MOCK_PLANT_ID=1`.
-- Jika plant `1` tidak ditemukan, generator mencoba plant bernama `MOCK_PLANT_NAME`.
-- Backend mengambil `device_id` dari tabel `plant_devices` untuk plant tersebut.
-- Setiap bucket 5 menit, backend menyimpan 5 row ke `device_data`:
-  - `pv / chargePower`
-  - `out / power`
-  - `out / vaPower`
-  - `grid / power`
-  - `baterai / power`
-- Saat start, backend melakukan backfill dari jam `00:00` Asia/Jakarta sampai bucket sekarang.
-- Setelah backfill, backend lanjut insert otomatis setiap 5 menit.
-- Anti-duplikat dilakukan per `device_id`, `category`, `type`, dan bucket waktu 5 menit. Restart server tidak akan menggandakan bucket yang sudah ada.
+## Status MockPlant saat ini
 
-Catatan schema: tabel `device_data` di project ini tidak memiliki kolom `plant_id`. Relasi plant berasal dari `plant_devices.device_id -> plant_devices.plant_id`.
+`src/services/mockPlantData.service.js` tetap dipertahankan.
 
-## Environment
+- Automatic sender tersedia melalui fungsi `startAutomaticPlantDataSender()`.
+- Source saat ini **tidak memulai automatic sender**, karena pemanggilannya di `src/index.js` masih dikomentari.
+- Endpoint manual `POST /api/data/manual/send` tetap aktif untuk testing.
+- Data manual/otomatis menggunakan relasi `plant_devices.device_id → plant_devices.plant_id`.
+
+Jika automatic sender memang dibutuhkan pada environment testing, aktifkan secara sengaja setelah memastikan target plant/device benar. Jangan mengaktifkannya pada production tanpa persetujuan karena data akan tersimpan permanen.
+
+## Environment MockPlant
 
 ```env
 MOCK_PLANT_ENABLED=true
@@ -29,40 +25,44 @@ MOCK_PLANT_NAME=Plant Testing
 MOCK_PLANT_INTERVAL_MS=300000
 ```
 
-Matikan generator dengan:
+`MOCK_PLANT_ENABLED=false` mencegah automatic sender berjalan ketika fungsi startup dipanggil. Nilai tersebut tidak menonaktifkan endpoint manual.
+
+## Data yang dibuat
+
+Setiap bucket dapat menyimpan telemetry berikut:
+
+- `pv / chargePower`
+- `out / power`
+- `out / vaPower`
+- `grid / power`
+- `baterai / power`
+
+MockPlant juga dapat melakukan backfill bucket hari berjalan dan mencegah duplikasi berdasarkan device, category, type, dan waktu bucket.
+
+## Endpoint manual
+
+```http
+POST /api/data/manual/send
+Content-Type: application/json
+```
+
+Endpoint ini adalah alat testing, tidak menggunakan middleware Bearer token, dan dapat menulis database serta mengirim event realtime. Batasi akses melalui jaringan/reverse proxy bila server dapat diakses publik.
+
+## Mock chart fallback
 
 ```env
-MOCK_PLANT_ENABLED=false
+MOCK_CHART_ENABLED=false
+MOCK_CHART_POINTS_PER_DAY=180
 ```
 
-## Menjalankan backend
+Jika diaktifkan, endpoint `/api/data/chart` tetap mencoba database terlebih dahulu. Dummy chart hanya dikembalikan saat series database kosong dan ditandai dengan `source: "dummy"`.
 
-```bash
-npm install
-npm start
-```
-
-Untuk development:
-
-```bash
-npm run dev
-```
-
-Log yang diharapkan:
-
-```text
-[mock-plant] Backfill hari ini selesai ...
-[mock-plant] Dummy data DB aktif ...
-[mock-plant] Insert 5 row dummy untuk bucket ...
-```
-
-## Cek PostgreSQL
-
-Karena `device_data` tidak menyimpan `plant_id`, gunakan join ke `plant_devices`:
+## Memeriksa data PostgreSQL
 
 ```sql
 SELECT
   pd.plant_id,
+  dd.device_id,
   dd.category,
   dd.type,
   COUNT(*) AS total,
@@ -70,65 +70,8 @@ SELECT
 FROM device_data dd
 JOIN plant_devices pd ON pd.device_id = dd.device_id
 WHERE pd.plant_id = 1
-GROUP BY pd.plant_id, dd.category, dd.type
+GROUP BY pd.plant_id, dd.device_id, dd.category, dd.type
 ORDER BY last_data DESC;
 ```
 
-```sql
-SELECT DISTINCT dd.category, dd.type
-FROM device_data dd
-JOIN plant_devices pd ON pd.device_id = dd.device_id
-WHERE pd.plant_id = 1
-ORDER BY dd.category, dd.type;
-```
-
-```sql
-SELECT dd.*
-FROM device_data dd
-JOIN plant_devices pd ON pd.device_id = dd.device_id
-WHERE pd.plant_id = 1
-ORDER BY dd.created_at DESC
-LIMIT 20;
-```
-
-```sql
-SELECT dd.*
-FROM device_data dd
-JOIN plant_devices pd ON pd.device_id = dd.device_id
-WHERE pd.plant_id = 1
-  AND dd.created_at::date = CURRENT_DATE
-ORDER BY dd.created_at DESC
-LIMIT 50;
-```
-
-## Test endpoint chart
-
-Login dulu untuk mendapatkan token:
-
-```bash
-curl -X POST "http://localhost:3000/api/auth/login" \
-  -H "Content-Type: application/json" \
-  -d "{\"email\":\"adit@mail.com\",\"password\":\"123456\"}"
-```
-
-Test chart hari ini:
-
-```bash
-curl "http://localhost:3000/api/data/chart?plantId=1&segment=day&date=YYYY-MM-DD" \
-  -H "Accept: application/json" \
-  -H "Authorization: Bearer TOKEN"
-```
-
-Expected:
-
-- `data.production` tidak kosong
-- `data.load` tidak kosong
-- `data.upsLoad` tidak kosong
-- `data.grid` tidak kosong
-- `data.battery` tidak kosong
-
-Jika backend berjalan di VPS, ganti host menjadi:
-
-```text
-http://103.31.205.39:3000
-```
+Data lama tidak memiliki flag khusus `mock`. Jangan menghapus row hanya berdasarkan nama plant tanpa backup dan filter device/waktu yang sudah diverifikasi.

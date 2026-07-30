@@ -1,5 +1,7 @@
+//===== (Imports) ======
 const { verifyToken } = require("../config/jwt");
 
+//===== (authMiddleware) ======
 const authMiddleware = (req, res, next) => {
   const header = req.headers.authorization;
 
@@ -16,4 +18,5 @@ const authMiddleware = (req, res, next) => {
   }
 };
 
+//===== (Exports) ======
 module.exports = authMiddleware;

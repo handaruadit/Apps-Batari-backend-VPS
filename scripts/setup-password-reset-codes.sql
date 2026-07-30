@@ -5,6 +5,7 @@
 -- If the application DB user is not apiuser, replace apiuser in the GRANT
 -- statements below with the DB_USER value from the VPS .env file.
 
+--===== (Password Reset Table) ======
 DO $$
 DECLARE
   users_id_type text;
@@ -40,12 +41,14 @@ BEGIN
   $create_table$, users_id_type);
 END $$;
 
+--===== (Password Reset Indexes) ======
 CREATE INDEX IF NOT EXISTS idx_password_reset_codes_email_created
   ON public.password_reset_codes (email, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_password_reset_codes_phone_created
   ON public.password_reset_codes (phone, created_at DESC);
 
+--===== (Database Permissions) ======
 GRANT USAGE ON SCHEMA public TO apiuser;
 GRANT SELECT, REFERENCES ON TABLE public.users TO apiuser;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.password_reset_codes TO apiuser;

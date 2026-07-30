@@ -1,7 +1,10 @@
+//===== (Imports) ======
 const db = require("../config/db");
 
+//===== (normalizeDeviceId) ======
 const normalizeDeviceId = (deviceId) => String(deviceId || "").trim().toUpperCase();
 
+//===== (getRegisteredDevices) ======
 const getRegisteredDevices = async () => {
   const rows = await db("registered_devices")
     .select("device_id as deviceId", "created_at as createdAt")
@@ -10,6 +13,7 @@ const getRegisteredDevices = async () => {
   return rows;
 };
 
+//===== (registerDevice) ======
 const registerDevice = async (deviceId) => {
   const normalizedDeviceId = normalizeDeviceId(deviceId);
 
@@ -33,6 +37,7 @@ const registerDevice = async (deviceId) => {
     : { deviceId: normalizedDeviceId };
 };
 
+//===== (isRegisteredDevice) ======
 const isRegisteredDevice = async (deviceId) => {
   const normalizedDeviceId = normalizeDeviceId(deviceId);
 
@@ -47,6 +52,7 @@ const isRegisteredDevice = async (deviceId) => {
   return !!device;
 };
 
+//===== (Exports) ======
 module.exports = {
   getRegisteredDevices,
   isRegisteredDevice,

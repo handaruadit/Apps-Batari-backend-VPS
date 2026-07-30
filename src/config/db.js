@@ -1,6 +1,10 @@
-require("dotenv").config();
+//===== (Environment) ======
+require("./env");
+
+//===== (Imports) ======
 const knex = require("knex");
 
+//===== (Database Connection) ======
 const db = knex({
   client: "pg",
   connection: {
@@ -12,15 +16,5 @@ const db = knex({
   },
 });
 
+//===== (Exports) ======
 module.exports = db;
-
-
-// const db = knex({
-//   client: "pg",
-//   connection: process.env.DATABASE_URL,
-//   ssl: {
-//     rejectUnauthorized: false,
-//   },
-// });
-
-// module.exports = db;

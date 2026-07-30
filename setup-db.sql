@@ -1,5 +1,7 @@
+--===== (Extensions) ======
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
+--===== (Users) ======
 CREATE TABLE IF NOT EXISTS users (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   email text UNIQUE NOT NULL,
@@ -13,6 +15,7 @@ CREATE TABLE IF NOT EXISTS users (
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'user';
 
+--===== (Plants) ======
 CREATE TABLE IF NOT EXISTS plants (
   id bigserial PRIMARY KEY,
   name text NOT NULL,
@@ -30,15 +33,18 @@ CREATE TABLE IF NOT EXISTS plants (
   updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP
 );
 
+--===== (Plant Access) ======
 CREATE TABLE IF NOT EXISTS user_plants (
   id bigserial PRIMARY KEY,
   user_id uuid REFERENCES users(id) ON DELETE CASCADE,
   plant_id bigint REFERENCES plants(id) ON DELETE CASCADE,
   role text CHECK (role IN ('owner', 'editor', 'viewer')) DEFAULT 'viewer',
   created_at timestamp DEFAULT CURRENT_TIMESTAMP,
+  updated_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (user_id, plant_id)
 );
 
+--===== (Plant Devices) ======
 CREATE TABLE IF NOT EXISTS plant_devices (
   id bigserial PRIMARY KEY,
   device_id text UNIQUE NOT NULL,
@@ -46,6 +52,15 @@ CREATE TABLE IF NOT EXISTS plant_devices (
   created_at timestamp DEFAULT CURRENT_TIMESTAMP
 );
 
+--===== (Registered Devices) ======
+CREATE TABLE IF NOT EXISTS registered_devices (
+  id bigserial PRIMARY KEY,
+  device_id text UNIQUE NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+--===== (Device Access Permissions) ======
 CREATE TABLE IF NOT EXISTS device_access_permissions (
   id bigserial PRIMARY KEY,
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -57,6 +72,7 @@ CREATE TABLE IF NOT EXISTS device_access_permissions (
   UNIQUE (user_id, plant_id, device_id)
 );
 
+--===== (Device Telemetry) ======
 CREATE TABLE IF NOT EXISTS device_data (
   id bigserial PRIMARY KEY,
   device_id character varying(50),
@@ -66,6 +82,7 @@ CREATE TABLE IF NOT EXISTS device_data (
   created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
 );
 
+--===== (Password Reset Codes) ======
 CREATE TABLE IF NOT EXISTS password_reset_codes (
   id bigserial PRIMARY KEY,
   user_id uuid REFERENCES users(id) ON DELETE CASCADE,
@@ -79,6 +96,7 @@ CREATE TABLE IF NOT EXISTS password_reset_codes (
   created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+--===== (Indexes) ======
 CREATE INDEX IF NOT EXISTS idx_device_data_device_created
   ON device_data (device_id, created_at DESC);
 
@@ -97,6 +115,12 @@ CREATE INDEX IF NOT EXISTS idx_user_plants_user_id
 CREATE INDEX IF NOT EXISTS idx_user_plants_plant_id
   ON user_plants (plant_id);
 
+CREATE INDEX IF NOT EXISTS idx_user_plants_role
+  ON user_plants (role);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_registered_devices_device_id
+  ON registered_devices (device_id);
+
 CREATE INDEX IF NOT EXISTS idx_plant_devices_plant_id
   ON plant_devices (plant_id);
 
@@ -106,6 +130,7 @@ CREATE INDEX IF NOT EXISTS idx_device_access_permissions_user_plant
 CREATE INDEX IF NOT EXISTS idx_device_access_permissions_device
   ON device_access_permissions (device_id);
 
+--===== (Database Permissions) ======
 GRANT USAGE, CREATE ON SCHEMA public TO apiuser;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO apiuser;
 GRANT SELECT, REFERENCES ON TABLE users TO apiuser;

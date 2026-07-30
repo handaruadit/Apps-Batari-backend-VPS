@@ -1,9 +1,11 @@
+//===== (Imports) ======
 const {
   buildAutomaticMetrics,
   buildManualPlantDataRows,
   parseRequestedTimestamp,
 } = require("./mockPlantData.service");
 
+//===== (MockPlantData Service) ======
 describe("mockPlantData.service", () => {
   it("builds nine telemetry rows that match the frontend mapping", () => {
     const timestamp = new Date("2026-04-27T05:00:00.000Z");

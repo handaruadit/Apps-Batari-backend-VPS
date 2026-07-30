@@ -1,9 +1,10 @@
+//===== (Imports) ======
 const express = require("express");
 const router = express.Router();
 
 const { publishMessage } = require("../config/mqtt");
 
-// POST publish endpoint
+//===== (Publish MQTT Message) ======
 router.post("/publish", (req, res) => {
   const { topic, message } = req.body;
 
@@ -23,4 +24,5 @@ router.post("/publish", (req, res) => {
   });
 });
 
+//===== (Exports) ======
 module.exports = router;

@@ -1,3 +1,4 @@
+//===== (Imports) ======
 const router = require("express").Router();
 const auth = require("../middlewares/auth.middleware");
 const {
@@ -16,32 +17,33 @@ const {
   updatePlantData,
 } = require("../controllers/plant.controller");
 
-// create plant
+//===== (Create Plant Route) ======
 router.post("/create", auth, createPlant);
 
-// legacy assign user to plant
+//===== (Legacy User Assignment Route) ======
 router.post("/assign-user", auth, assignUserToPlantByEmail);
 
-// legacy assign device to plant
+//===== (Legacy Device Assignment Route) ======
 router.post("/assign-device", auth, addDeviceToPlant);
 
-// plant access management
+//===== (Plant Access Routes) ======
 router.get("/:id/access", auth, getPlantAccessData);
 router.post("/:id/access/search", auth, searchPlantAccessUsers);
 router.post("/:id/access", auth, addPlantAccessUser);
 router.patch("/:id/access/:userId", auth, updatePlantAccessUser);
 router.delete("/:id/access/:userId", auth, removePlantAccessUser);
 
-// plant devices
+//===== (Plant Device Routes) ======
 router.post("/:id/device", auth, addDeviceToPlant);
 router.get("/:id/devices", auth, getPlantDeviceData);
 router.delete("/:id/device/:deviceId", auth, removeDeviceFromPlant);
 
-// update/delete plant
+//===== (Plant Mutation Routes) ======
 router.put("/:id", auth, updatePlantData);
 router.delete("/:id", auth, deletePlantData);
 
-// get plant data
+//===== (Plant List Route) ======
 router.get("/", auth, getPlantData);
 
+//===== (Exports) ======
 module.exports = router;

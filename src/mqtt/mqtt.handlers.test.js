@@ -1,0 +1,168 @@
+//===== (Mocks) ======
+jest.mock("../sockets/socket", () => ({
+  getIO: jest.fn(),
+}));
+
+jest.mock("../services/data.service", () => ({
+  saveDeviceData: jest.fn(),
+}));
+
+jest.mock("./mqtt.config", () => ({
+  bmsMqttConfig: {
+    debugEnabled: false,
+    topic: "bms/+/data",
+  },
+  primaryMqttConfig: {
+    topics: ["app/+/baterai", "app/+/inverter"],
+  },
+}));
+
+jest.mock("./bms.service", () => ({
+  handleBmsBatteryPower: jest.fn(),
+}));
+
+//===== (Imports) ======
+const { EventEmitter } = require("events");
+const { getIO } = require("../sockets/socket");
+const { saveDeviceData } = require("../services/data.service");
+const { bmsMqttConfig, primaryMqttConfig } = require("./mqtt.config");
+const { handleBmsBatteryPower } = require("./bms.service");
+const {
+  registerBmsMqttHandlers,
+  registerPrimaryMqttHandlers,
+} = require("./mqtt.handlers");
+
+//===== (FakeMqttClient) ======
+class FakeMqttClient extends EventEmitter {
+  constructor() {
+    super();
+    this.subscribe = jest.fn((topics, callback) => {
+      if (callback) callback(null);
+    });
+  }
+}
+
+//===== (Test Lifecycle) ======
+beforeEach(() => {
+  jest.clearAllMocks();
+  jest.spyOn(console, "error").mockImplementation(() => {});
+  jest.spyOn(console, "log").mockImplementation(() => {});
+  jest.spyOn(console, "warn").mockImplementation(() => {});
+});
+
+afterEach(() => {
+  jest.restoreAllMocks();
+});
+
+//===== (Primary MQTT Lifecycle) ======
+describe("registerPrimaryMqttHandlers", () => {
+  it("subscribes to every primary telemetry topic after connecting", () => {
+    const client = new FakeMqttClient();
+    registerPrimaryMqttHandlers(client);
+
+    client.emit("connect");
+
+    expect(client.subscribe).toHaveBeenCalledWith(
+      primaryMqttConfig.topics,
+      expect.any(Function),
+    );
+  });
+
+  it("emits realtime data before persisting the parsed rows", async () => {
+    const client = new FakeMqttClient();
+    const room = {
+      emit: jest.fn(),
+    };
+    const io = {
+      to: jest.fn(() => room),
+    };
+    getIO.mockReturnValue(io);
+    saveDeviceData.mockResolvedValue(undefined);
+    jest.spyOn(Date, "now").mockReturnValue(123456789);
+    registerPrimaryMqttHandlers(client);
+
+    const messageHandler = client.listeners("message")[0];
+    await messageHandler(
+      "app/device-1/baterai",
+      Buffer.from(
+        JSON.stringify({
+          deviceId: "device-1",
+          baterai: {
+            voltage: "51.2",
+          },
+        }),
+      ),
+    );
+
+    const expectedRows = [
+      {
+        deviceId: "device-1",
+        category: "baterai",
+        type: "voltage",
+        value: 51.2,
+        timestamp: 123456789,
+      },
+    ];
+
+    expect(io.to).toHaveBeenCalledWith("device-1");
+    expect(room.emit).toHaveBeenCalledWith("mqtt_message", expectedRows);
+    expect(saveDeviceData).toHaveBeenCalledWith(expectedRows);
+    expect(room.emit.mock.invocationCallOrder[0]).toBeLessThan(
+      saveDeviceData.mock.invocationCallOrder[0],
+    );
+  });
+});
+
+//===== (BMS MQTT Lifecycle) ======
+describe("registerBmsMqttHandlers", () => {
+  it("parses a matching BMS message and invokes battery power handling", async () => {
+    const client = new FakeMqttClient();
+    handleBmsBatteryPower.mockResolvedValue(undefined);
+    registerBmsMqttHandlers(client);
+
+    const messageHandler = client.listeners("message")[0];
+    await messageHandler(
+      "bms/device-1/data",
+      Buffer.from(
+        JSON.stringify({
+          device_id: "device-1",
+          category: "data_bms",
+          type: "voltage",
+          value: "52.4",
+          created_at: "2026-07-30T10:15:00.000Z",
+        }),
+      ),
+    );
+
+    expect(handleBmsBatteryPower).toHaveBeenCalledWith([
+      {
+        deviceId: "device-1",
+        category: "data_bms",
+        type: "voltage",
+        value: 52.4,
+        timestamp: new Date("2026-07-30T10:15:00.000Z").getTime(),
+      },
+    ]);
+  });
+
+  it("keeps the BMS client disabled when its configuration is incomplete", () => {
+    registerBmsMqttHandlers(null);
+
+    expect(console.warn).toHaveBeenCalledWith(
+      "BMS MQTT disabled: BMS_MQTT_* env is incomplete",
+    );
+    expect(handleBmsBatteryPower).not.toHaveBeenCalled();
+  });
+
+  it("subscribes to the configured BMS topic after connecting", () => {
+    const client = new FakeMqttClient();
+    registerBmsMqttHandlers(client);
+
+    client.emit("connect");
+
+    expect(client.subscribe).toHaveBeenCalledWith(
+      bmsMqttConfig.topic,
+      expect.any(Function),
+    );
+  });
+});
