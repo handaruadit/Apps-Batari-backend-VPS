@@ -10,7 +10,8 @@ const {
   previewPayload,
   topicMatchesSubscription,
 } = require("./payload.parser");
-const { handleBmsBatteryPower } = require("./bms.service");
+// const { handleBmsBatteryPower } = require("./bms.service");
+const { parseBmsPayloadRows } = require("./bms.payload.parser");
 
 //===== (registerPrimaryMqttHandlers) ======
 const registerPrimaryMqttHandlers = (client) => {
@@ -125,43 +126,135 @@ const registerBmsMqttHandlers = (bmsClient) => {
   });
 
   //===== (BMS Message Handler) ======
+  // bmsClient.on("message", async (topic, message) => {
+  //   try {
+  //     console.log(
+  //       `BMS MQTT message received: topic=${topic}, bytes=${message.length}`,
+  //     );
+  //     if (bmsMqttConfig.debugEnabled) {
+  //       console.log("BMS MQTT payload preview:", previewPayload(message));
+  //     }
+
+  //     if (!topicMatchesSubscription(bmsMqttConfig.topic, topic)) {
+  //       console.warn(
+  //         `BMS MQTT topic ignored: ${topic} does not match ${bmsMqttConfig.topic}`,
+  //       );
+  //       return;
+  //     }
+
+  //     let payload;
+  //     try {
+  //       payload = JSON.parse(message.toString());
+  //     } catch (err) {
+  //       console.error(`BMS MQTT payload JSON parse failed: ${err.message}`);
+  //       return;
+  //     }
+
+  //     const parsedData = parsePayloadRows(payload);
+  //     if (parsedData.length === 0) {
+  //       console.warn("BMS MQTT payload ignored: no parsable rows");
+  //       return;
+  //     }
+
+  //     await handleBmsBatteryPower(parsedData);
+  //     console.log("Parsed Data:", parsedData.length, "rows");
+  //   } catch (err) {
+  //     console.error("BMS MQTT ERROR:", err.message);
+  //   }
+  // });
+
+  //===== (BMS Message Handler) ======
   bmsClient.on("message", async (topic, message) => {
     try {
       console.log(
         `BMS MQTT message received: topic=${topic}, bytes=${message.length}`,
       );
-      if (bmsMqttConfig.debugEnabled) {
-        console.log("BMS MQTT payload preview:", previewPayload(message));
-      }
 
       if (!topicMatchesSubscription(bmsMqttConfig.topic, topic)) {
-        console.warn(
-          `BMS MQTT topic ignored: ${topic} does not match ${bmsMqttConfig.topic}`,
-        );
+        console.warn(`BMS MQTT topic ignored: ${topic}`);
+
+        return;
+      }
+
+      const payloadText = message.toString();
+
+      if (bmsMqttConfig.debugEnabled) {
+        console.log("BMS MQTT payload:", previewPayload(message));
+      }
+
+      const normalizedPayload = payloadText.trim().toLowerCase();
+
+      if (topic.endsWith("/status")) {
+        if (normalizedPayload === "online" || normalizedPayload === "offline") {
+          console.log(`BMS Device Status: ${normalizedPayload}`);
+        } else {
+          console.warn(`BMS status tidak dikenal: ${payloadText}`);
+        }
+
+        return;
+      }
+
+      if (!topic.endsWith("/data")) {
+        console.warn(`BMS topic diabaikan karena bukan topic data: ${topic}`);
+
         return;
       }
 
       let payload;
+
       try {
-        payload = JSON.parse(message.toString());
-      } catch (err) {
-        console.error(`BMS MQTT payload JSON parse failed: ${err.message}`);
+        payload = JSON.parse(payloadText);
+      } catch (error) {
+        console.error(`BMS payload bukan JSON yang valid: ${error.message}`);
+
         return;
       }
 
-      const parsedData = parsePayloadRows(payload);
-      if (parsedData.length === 0) {
-        console.warn("BMS MQTT payload ignored: no parsable rows");
+      const result = parseBmsPayloadRows(payload, Date.now());
+
+      if (!result.valid) {
+        console.warn("BMS payload tidak valid:");
+
+        result.errors.forEach((error) => {
+          console.warn(`- ${error}`);
+        });
+
         return;
       }
 
-      await handleBmsBatteryPower(parsedData);
-      console.log("Parsed Data:", parsedData.length, "rows");
-    } catch (err) {
-      console.error("BMS MQTT ERROR:", err.message);
+      console.log(`BMS payload berhasil diproses: ${result.rows.length} baris`);
+
+      console.dir(result.rows, {
+        depth: null,
+      });
+
+      const insertedRows = await saveDeviceData(result.rows);
+
+      if (insertedRows.length !== result.rows.length) {
+        console.error(
+          `BMS DB gagal: hanya ${insertedRows.length} dari ${result.rows.length} baris tersimpan`,
+        );
+
+        return;
+      }
+
+      console.log(`BMS DB berhasil: ${insertedRows.length} baris tersimpan`);
+
+      console.table(
+        insertedRows.map((row) => ({
+          id: row.id,
+          device_id: row.device_id,
+          category: row.category,
+          type: row.type,
+          value: row.value,
+          created_at: row.created_at,
+        })),
+      );
+    } catch (error) {
+      console.error("BMS MQTT ERROR:", error.message);
     }
   });
-};
+};;;
 
 //===== (Exports) ======
 module.exports = {
