@@ -30,6 +30,9 @@ const {
   getYearly,
 } = require("./dataTelemetry.controller");
 const { sendManualPlantData } = require("./manualPlantData.controller");
+const {
+  selectRequestedDeviceIds,
+} = require("./dataController.helpers");
 
 //===== (createResponse) ======
 const createResponse = () => {
@@ -118,6 +121,43 @@ describe("dataTelemetry.controller", () => {
     });
   });
 
+  test("membatasi telemetry ke device sumber yang dipilih frontend", async () => {
+    const response = createResponse();
+    const deviceRow = {
+      category: "grid",
+      type: "power",
+      value: 4.944,
+    };
+
+    dataService.getDeviceIdData.mockResolvedValue([
+      { device_id: "BMS_JIABAIDA" },
+      { device_id: "DEYE_STATION_61419275" },
+    ]);
+    dataService.getDeviceData.mockResolvedValue([deviceRow]);
+    dataService.formatDeviceDataForResponse.mockReturnValue(deviceRow);
+    dataService.getLatestEnergyData.mockResolvedValue({});
+
+    await fetchDeviceData(
+      createAuthenticatedRequest({
+        plantId: "3",
+        category: "grid",
+        type: "power",
+        device_id: "DEYE_STATION_61419275",
+        deviceId: "DEYE_STATION_61419275",
+      }),
+      response,
+    );
+
+    expect(dataService.getDeviceData).toHaveBeenCalledWith(
+      expect.objectContaining({
+        deviceIds: ["DEYE_STATION_61419275"],
+      }),
+    );
+    expect(dataService.getLatestEnergyData).toHaveBeenCalledWith({
+      deviceIds: ["DEYE_STATION_61419275"],
+    });
+  });
+
   test("mempertahankan respons penolakan akses device", async () => {
     const response = createResponse();
     dataService.getDeviceIdData.mockRejectedValue(new Error("Access_Denied"));
@@ -147,6 +187,27 @@ describe("dataTelemetry.controller", () => {
     expect(response.json).toHaveBeenCalledWith({
       status: "Database_Error",
     });
+  });
+});
+
+//===== (Device Source Selection) ======
+describe("dataController.helpers device source selection", () => {
+  const devices = [
+    { device_id: "BMS_JIABAIDA" },
+    { device_id: "DEYE_STATION_61419275" },
+  ];
+
+  test("menggunakan semua device saat frontend memilih data plant", () => {
+    expect(selectRequestedDeviceIds(devices)).toEqual([
+      "BMS_JIABAIDA",
+      "DEYE_STATION_61419275",
+    ]);
+  });
+
+  test("menolak device yang tidak terhubung ke plant", () => {
+    expect(() =>
+      selectRequestedDeviceIds(devices, { device_id: "DEVICE_LAIN" }),
+    ).toThrow("Access_Denied");
   });
 });
 

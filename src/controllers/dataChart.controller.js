@@ -6,8 +6,8 @@ const {
   getYearlyChartData,
 } = require("../services/data.service");
 const {
-  getDeviceIdValues,
   isDeviceAccessDenied,
+  selectRequestedDeviceIds,
   sendDeviceAccessDenied,
 } = require("./dataController.helpers");
 
@@ -37,7 +37,7 @@ const getChart = async (req, res) => {
 
     const chartResult = await getChartData({
       plantId,
-      deviceIds: getDeviceIdValues(deviceIds),
+      deviceIds: selectRequestedDeviceIds(deviceIds, req.query),
       segment,
       date,
     });
@@ -118,7 +118,7 @@ const getMonthlyChart = async (req, res) => {
 
     const deviceIds = await getDeviceIdData(userId, plantId, role);
     const data = await getMonthlyChartData({
-      deviceIds: getDeviceIdValues(deviceIds),
+      deviceIds: selectRequestedDeviceIds(deviceIds, req.query),
       month: requestedMonth,
     });
 
@@ -183,7 +183,7 @@ const getYearlyChart = async (req, res) => {
 
     const deviceIds = await getDeviceIdData(userId, plantId, role);
     const data = await getYearlyChartData({
-      deviceIds: getDeviceIdValues(deviceIds),
+      deviceIds: selectRequestedDeviceIds(deviceIds, req.query),
       year: requestedYear,
     });
 

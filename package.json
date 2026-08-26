@@ -6,13 +6,22 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "test": "jest --runInBand",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "deye:check": "node scripts/check-deye-readiness.js",
+    "deye:setup-db": "node scripts/setup-deye-integrations.js",
+    "deye:register": "node scripts/register-deye-integration.js",
+    "deye:map-preview": "node scripts/import-deye-stations.js --dry-run",
+    "deye:import": "node scripts/import-deye-stations.js",
+    "deye:probe": "node scripts/probe-deye.js",
+    "deye:sync-once": "node scripts/sync-deye-once.js",
+    "deye:worker": "node src/workers/deyeSync.worker.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "Backend telemetry, plant, energy, MQTT, and realtime Socket.IO API",
   "dependencies": {
+    "axios": "^1.19.0",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",

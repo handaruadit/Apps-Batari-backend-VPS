@@ -59,9 +59,17 @@ const removePlantDevice = async (deviceId, plantId) => {
 
 //===== (getPlantDevices) ======
 const getPlantDevices = async (plantId) => {
-  const devices = await db("plant_devices")
-    .where("plant_id", plantId)
-    .orderBy("device_id", "asc");
+  const devices = await db("plant_devices as pd")
+    .leftJoin("deye_devices as dd", "dd.device_sn", "pd.device_id")
+    .where("pd.plant_id", plantId)
+    .select(
+      "pd.*",
+      "dd.device_type as deviceType",
+      "dd.connect_status as connectStatus",
+      "dd.product_id as productId",
+      "dd.last_seen as lastSeen",
+    )
+    .orderBy("pd.device_id", "asc");
 
   for (const device of devices) {
     const latestRows = await db.raw(
