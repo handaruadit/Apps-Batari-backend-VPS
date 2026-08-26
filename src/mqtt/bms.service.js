@@ -1,6 +1,9 @@
 //===== (Imports) ======
 const { saveBatteryPowerForPlant } = require("../services/data.service");
+
 const { bmsMqttConfig } = require("./mqtt.config");
+
+const { calculateBatteryPowerKw } = require("./bms.power");
 
 //===== (Konfigurasi BMS Power) ======
 const BMS_POWER_CATEGORY = "baterai";
@@ -23,9 +26,9 @@ const getBmsMeasurementRows = (parsedData) =>
       Number.isFinite(Number(row.value)),
   );
 
-//===== (calculateBatteryPowerKw) ======
-const calculateBatteryPowerKw = (voltage, current) =>
-  (voltage * current) / 1000;
+// //===== (calculateBatteryPowerKw) ======
+// const calculateBatteryPowerKw = (voltage, current) =>
+//   (voltage * current) / 1000;
 
 //===== (handleBmsBatteryPower) ======
 const handleBmsBatteryPower = async (parsedData) => {

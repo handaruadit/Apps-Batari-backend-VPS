@@ -50,6 +50,19 @@ jest.mock("./controllers/plant.controller", () => ({
   removePlantAccessUser: createMockHandler("removePlantAccessUser"),
 }));
 
+//===== (Mock Deye Controller) ======
+jest.mock("./controllers/deye.controller", () => ({
+  testAuthentication: createMockHandler("deyeTestAuthentication"),
+  listStations: createMockHandler("deyeListStations"),
+  getStationLatest: createMockHandler("deyeGetStationLatest"),
+  getStationDevices: createMockHandler("deyeGetStationDevices"),
+  getMeasurePoints: createMockHandler("deyeGetMeasurePoints"),
+  getDeviceLatest: createMockHandler("deyeGetDeviceLatest"),
+  registerIntegration: createMockHandler("deyeRegisterIntegration"),
+  syncAll: createMockHandler("deyeSyncAll"),
+  syncStationOnce: createMockHandler("deyeSyncStationOnce"),
+}));
+
 //===== (Mock MQTT) ======
 jest.mock("./config/mqtt", () => ({
   publishMessage: jest.fn(),
@@ -76,6 +89,9 @@ const routeCases = [
   ["get", "/api/data/monthly", "getMonthly", true],
   ["get", "/api/data/yearly", "getYearly", true],
   ["get", "/api/data/lifetime", "getLifetime", true],
+  ["get", "/api/deye/test", "deyeTestAuthentication", true],
+  ["post", "/api/deye/stations/61419275/sync", "deyeSyncStationOnce", true],
+  ["post", "/api/deye/sync-all", "deyeSyncAll", true],
   ["post", "/api/plant/create", "createPlant", true],
   ["post", "/api/plant/assign-user", "assignUserToPlantByEmail", true],
   ["post", "/api/plant/assign-device", "addDeviceToPlant", true],

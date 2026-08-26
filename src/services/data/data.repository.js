@@ -6,25 +6,66 @@ const {
 } = require("./constants");
 const { normalizeCreatedAt } = require("./telemetry.formatter");
 
+// //===== (saveDeviceData) ======
+// const saveDeviceData = async (data) => {
+//   try {
+//     const rows = Array.isArray(data) ? data : [data];
+//     const formatted = rows.map((item) => {
+//       const createdAt = normalizeCreatedAt(item.createdAt || item.timestamp);
+
+//       return {
+//         device_id: item.deviceId,
+//         category: item.category,
+//         type: item.type,
+//         value: item.value,
+//         ...(createdAt ? { created_at: createdAt } : {}),
+//       };
+//     });
+
+//     await db("device_data").insert(formatted);
+//   } catch (err) {
+//     console.error("❌ DB Insert Error:", err.message);
+//   }
+// };
+
 //===== (saveDeviceData) ======
 const saveDeviceData = async (data) => {
   try {
     const rows = Array.isArray(data) ? data : [data];
+
+    if (rows.length === 0) {
+      return [];
+    }
+
     const formatted = rows.map((item) => {
-      const createdAt = normalizeCreatedAt(item.createdAt || item.timestamp);
+      const createdAt = normalizeCreatedAt(
+        item.createdAt || item.timestamp,
+      );
 
       return {
         device_id: item.deviceId,
         category: item.category,
         type: item.type,
         value: item.value,
-        ...(createdAt ? { created_at: createdAt } : {}),
+        ...(createdAt
+          ? { created_at: createdAt }
+          : {}),
       };
     });
 
-    await db("device_data").insert(formatted);
+    return await db("device_data")
+      .insert(formatted)
+      .returning([
+        "id",
+        "device_id",
+        "category",
+        "type",
+        "value",
+        "created_at",
+      ]);
   } catch (err) {
     console.error("❌ DB Insert Error:", err.message);
+    return [];
   }
 };
 

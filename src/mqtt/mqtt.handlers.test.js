@@ -10,15 +10,11 @@ jest.mock("../services/data.service", () => ({
 jest.mock("./mqtt.config", () => ({
   bmsMqttConfig: {
     debugEnabled: false,
-    topic: "bms/+/data",
+    topic: "bms_jiabaida/#",
   },
   primaryMqttConfig: {
     topics: ["app/+/baterai", "app/+/inverter"],
   },
-}));
-
-jest.mock("./bms.service", () => ({
-  handleBmsBatteryPower: jest.fn(),
 }));
 
 //===== (Imports) ======
@@ -26,7 +22,6 @@ const { EventEmitter } = require("events");
 const { getIO } = require("../sockets/socket");
 const { saveDeviceData } = require("../services/data.service");
 const { bmsMqttConfig, primaryMqttConfig } = require("./mqtt.config");
-const { handleBmsBatteryPower } = require("./bms.service");
 const {
   registerBmsMqttHandlers,
   registerPrimaryMqttHandlers,
@@ -115,34 +110,94 @@ describe("registerPrimaryMqttHandlers", () => {
 
 //===== (BMS MQTT Lifecycle) ======
 describe("registerBmsMqttHandlers", () => {
-  it("parses a matching BMS message and invokes battery power handling", async () => {
+  it("parses and saves a matching BMS data message", async () => {
     const client = new FakeMqttClient();
-    handleBmsBatteryPower.mockResolvedValue(undefined);
+
+    const timestamp = new Date(
+      "2026-07-30T10:15:00.000Z",
+    ).getTime();
+
+    const expectedRows = [
+      {
+        deviceId: "BMS_JIABAIDA",
+        category: "baterai",
+        type: "voltage",
+        value: 52.4,
+        timestamp,
+      },
+      {
+        deviceId: "BMS_JIABAIDA",
+        category: "baterai",
+        type: "current",
+        value: -10,
+        timestamp,
+      },
+      {
+        deviceId: "BMS_JIABAIDA",
+        category: "baterai",
+        type: "soc",
+        value: 49,
+        timestamp,
+      },
+      {
+        deviceId: "BMS_JIABAIDA",
+        category: "baterai",
+        type: "power",
+        value: -0.524,
+        timestamp,
+      },
+    ];
+
+    // Handler memeriksa jumlah baris yang dikembalikan database
+    saveDeviceData.mockResolvedValue(
+      expectedRows.map((row, index) => ({
+        id: index + 1,
+        device_id: row.deviceId,
+        category: row.category,
+        type: row.type,
+        value: row.value,
+        created_at: new Date(row.timestamp),
+      })),
+    );
+
     registerBmsMqttHandlers(client);
 
-    const messageHandler = client.listeners("message")[0];
+    const messageHandler =
+      client.listeners("message")[0];
+
     await messageHandler(
-      "bms/device-1/data",
+      "bms_jiabaida/data",
       Buffer.from(
         JSON.stringify({
-          device_id: "device-1",
-          category: "data_bms",
-          type: "voltage",
-          value: "52.4",
-          created_at: "2026-07-30T10:15:00.000Z",
+          device_id: "BMS_Jiabaida",
+          voltage: 52.4,
+          current: -10,
+          soc: 49,
+          waktu: "2026-07-30T10:15:00.000Z",
         }),
       ),
     );
 
-    expect(handleBmsBatteryPower).toHaveBeenCalledWith([
-      {
-        deviceId: "device-1",
-        category: "data_bms",
-        type: "voltage",
-        value: 52.4,
-        timestamp: new Date("2026-07-30T10:15:00.000Z").getTime(),
-      },
-    ]);
+    expect(saveDeviceData).toHaveBeenCalledTimes(1);
+    expect(saveDeviceData).toHaveBeenCalledWith(
+      expectedRows,
+    );
+  });
+
+  it("does not save BMS status messages", async () => {
+    const client = new FakeMqttClient();
+
+    registerBmsMqttHandlers(client);
+
+    const messageHandler =
+      client.listeners("message")[0];
+
+    await messageHandler(
+      "bms_jiabaida/status",
+      Buffer.from("online"),
+    );
+
+    expect(saveDeviceData).not.toHaveBeenCalled();
   });
 
   it("keeps the BMS client disabled when its configuration is incomplete", () => {
@@ -151,11 +206,13 @@ describe("registerBmsMqttHandlers", () => {
     expect(console.warn).toHaveBeenCalledWith(
       "BMS MQTT disabled: BMS_MQTT_* env is incomplete",
     );
-    expect(handleBmsBatteryPower).not.toHaveBeenCalled();
+
+    expect(saveDeviceData).not.toHaveBeenCalled();
   });
 
   it("subscribes to the configured BMS topic after connecting", () => {
     const client = new FakeMqttClient();
+
     registerBmsMqttHandlers(client);
 
     client.emit("connect");

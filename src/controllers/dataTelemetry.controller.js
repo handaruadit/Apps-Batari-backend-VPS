@@ -10,9 +10,9 @@ const {
   getYearlyData,
 } = require("../services/data.service");
 const {
-  getDeviceIdValues,
   groupDataByCategoryAndType,
   isDeviceAccessDenied,
+  selectRequestedDeviceIds,
   sendDeviceAccessDenied,
 } = require("./dataController.helpers");
 
@@ -49,7 +49,7 @@ const fetchDeviceData = async (req, res) => {
       end = new Date(endDate);
     }
 
-    const mappedDeviceIds = getDeviceIdValues(deviceIds);
+    const mappedDeviceIds = selectRequestedDeviceIds(deviceIds, req.query);
     const data = await getDeviceData({
       deviceIds: mappedDeviceIds,
       category,
@@ -118,7 +118,7 @@ const getDaily = async (req, res) => {
 
     const types = req.query.type ? req.query.type.split(",") : null;
     const data = await getDailyData({
-      deviceId: getDeviceIdValues(deviceIds),
+      deviceId: selectRequestedDeviceIds(deviceIds, req.query),
       date,
       category,
       types,
@@ -168,7 +168,7 @@ const getMonthly = async (req, res) => {
 
     const types = req.query.type ? req.query.type.split(",") : null;
     const data = await getMonthlyData({
-      deviceId: getDeviceIdValues(deviceIds),
+      deviceId: selectRequestedDeviceIds(deviceIds, req.query),
       month: date,
       category,
       types,
@@ -218,7 +218,7 @@ const getYearly = async (req, res) => {
 
     const types = req.query.type ? req.query.type.split(",") : null;
     const data = await getYearlyData({
-      deviceId: getDeviceIdValues(deviceIds),
+      deviceId: selectRequestedDeviceIds(deviceIds, req.query),
       year: date,
       category,
       types,
@@ -261,7 +261,7 @@ const getLifetime = async (req, res) => {
 
     const types = req.query.type ? req.query.type.split(",") : null;
     const data = await getLifetimeData({
-      deviceId: getDeviceIdValues(deviceIds),
+      deviceId: selectRequestedDeviceIds(deviceIds, req.query),
       category,
       types,
     });
