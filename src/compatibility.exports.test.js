@@ -61,11 +61,15 @@ describe("compatibility facade exports", () => {
 
   test("keeps auth service exports", () => {
     expectExportKeys(authService, [
+      "deleteUserAccount",
+      "getUserProfile",
+      "googleLoginUser",
       "loginUser",
       "normalizePhoneNumber",
       "registerUser",
       "requestPasswordReset",
       "resetPassword",
+      "updateUserProfile",
       "verifyPasswordResetCode",
     ]);
   });
@@ -98,10 +102,14 @@ describe("compatibility facade exports", () => {
       "updatePlantData",
     ]);
     expectExportKeys(authController, [
+      "deleteAccount",
       "forgotPassword",
+      "getProfile",
+      "googleLogin",
       "login",
       "register",
       "updatePassword",
+      "updateProfile",
       "verifyResetCode",
     ]);
   });

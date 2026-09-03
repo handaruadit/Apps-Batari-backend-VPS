@@ -48,6 +48,38 @@ Content-Type: application/json
 
 Endpoint ini adalah alat testing, tidak menggunakan middleware Bearer token, dan dapat menulis database serta mengirim event realtime. Batasi akses melalui jaringan/reverse proxy bila server dapat diakses publik.
 
+## Script Telemetry Simulator VPS
+
+Tersedia script simulator standalone untuk mengirim data kurva telemetri secara berkala dan realtime ke endpoint `/api/data/manual/send`:
+
+### 1. Batari Rooftop ("rooftop" / Plant ID 5)
+```bash
+npm run simulate:rooftop
+# atau
+node scripts/simulate-vps-rooftop.js
+```
+- **Target Plant:** `"rooftop"`
+- **Device ID:** `"INVERTER_01"`
+- **Interval:** 5 detik
+
+### 2. Batari Rooftop Villa Canggu (Plant ID 6)
+```bash
+npm run simulate:canggu
+# atau
+node scripts/simulate-vps-canggu.js
+```
+- **Target Plant:** `"Batari Rooftop Villa Canggu"`
+- **Device ID:** `"INVERTER_02"`
+- **Interval:** 5 detik
+
+#### Opsi & Flag Tambahan:
+- `--plant <name>` : Menentukan nama plant target.
+- `--device <deviceId>` : Menentukan device ID target.
+- `--url <apiUrl>` : Mengubah URL endpoint backend (default: `http://89.116.33.75:3001/api/data/manual/send`).
+- `--interval <ms>` : Mengatur interval stream realtime dalam milidetik (default: `5000`).
+- `--no-backfill` : Melewati proses backfill riwayat hari ini dan langsung memulai streaming realtime.
+
+
 ## Mock chart fallback
 
 ```env

@@ -39,10 +39,37 @@ const getResetIdentity = ({ method = "email", email, phone }) => {
   };
 };
 
+//===== (ensurePasswordResetTable) ======
+let tableEnsured = false;
+const ensurePasswordResetTable = async () => {
+  if (tableEnsured || !db || !db.schema || typeof db.schema.hasTable !== "function") return;
+  const exists = await db.schema.hasTable("password_reset_codes");
+  if (!exists) {
+    await db.schema.createTable("password_reset_codes", (table) => {
+      table.bigIncrements("id").primary();
+      table.uuid("user_id").references("id").inTable("users").onDelete("CASCADE");
+      table.text("email").notNullable();
+      table.text("phone").nullable();
+      table.text("method").notNullable().defaultTo("email");
+      table.text("code_hash").notNullable();
+      table.timestamp("expires_at", { useTz: true }).notNullable();
+      table.timestamp("used_at", { useTz: true }).nullable();
+      table.timestamp("verified_at", { useTz: true }).nullable();
+      table.timestamp("created_at", { useTz: true }).defaultTo(db.fn.now());
+    });
+  }
+  tableEnsured = true;
+};
+
 //===== (requestPasswordReset) ======
 const requestPasswordReset = async ({ method = "email", email, phone }) => {
+  await ensurePasswordResetTable();
   const identity = getResetIdentity({ method, email, phone });
-  const user = await db("users").where(identity.lookup).first();
+  let user = await db("users").where(identity.lookup).first();
+  if (!user && identity.method === "phone" && phone) {
+    const rawDigits = String(phone).trim();
+    user = await db("users").where({ phone: rawDigits }).first();
+  }
   if (!user) {
     throw new Error("Account not found");
   }
@@ -82,6 +109,7 @@ const requestPasswordReset = async ({ method = "email", email, phone }) => {
 
 //===== (getLatestResetRecord) ======
 const getLatestResetRecord = async ({ method = "email", email, phone }) => {
+  await ensurePasswordResetTable();
   const identity = getResetIdentity({ method, email, phone });
 
   return db("password_reset_codes")
