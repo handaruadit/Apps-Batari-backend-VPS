@@ -14,7 +14,9 @@
     "deye:import": "node scripts/import-deye-stations.js",
     "deye:probe": "node scripts/probe-deye.js",
     "deye:sync-once": "node scripts/sync-deye-once.js",
-    "deye:worker": "node src/workers/deyeSync.worker.js"
+    "deye:worker": "node src/workers/deyeSync.worker.js",
+    "simulate:rooftop": "node scripts/simulate-vps-rooftop.js",
+    "simulate:canggu": "node scripts/simulate-vps-canggu.js"
   },
   "keywords": [],
   "author": "",

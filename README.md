@@ -34,6 +34,8 @@ Server menggunakan `PORT` dari `.env`; jika tidak tersedia, fallback-nya adalah 
 | `npm run dev` | Menjalankan server dengan Nodemon |
 | `npm test` | Menjalankan seluruh test satu kali |
 | `npm run test:watch` | Menjalankan test dalam watch mode |
+| `npm run simulate:rooftop` | Menjalankan simulator telemetri untuk Batari Rooftop (`INVERTER_01`) |
+| `npm run simulate:canggu` | Menjalankan simulator telemetri untuk Batari Rooftop Villa Canggu (`INVERTER_02`) |
 
 ## Struktur utama
 

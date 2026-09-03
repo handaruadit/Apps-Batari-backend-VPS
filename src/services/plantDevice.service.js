@@ -61,13 +61,14 @@ const removePlantDevice = async (deviceId, plantId) => {
 const getPlantDevices = async (plantId) => {
   const devices = await db("plant_devices as pd")
     .leftJoin("deye_devices as dd", "dd.device_sn", "pd.device_id")
+    .leftJoin("deye_integrations as di", "di.source_device_id", "pd.device_id")
     .where("pd.plant_id", plantId)
     .select(
       "pd.*",
       "dd.device_type as deviceType",
       "dd.connect_status as connectStatus",
       "dd.product_id as productId",
-      "dd.last_seen as lastSeen",
+      db.raw("COALESCE(dd.last_seen, di.last_source_timestamp, di.last_synced_at) as \"lastSeen\""),
     )
     .orderBy("pd.device_id", "asc");
 
@@ -81,7 +82,7 @@ const getPlantDevices = async (plantId) => {
         created_at
       FROM device_data
       WHERE device_id = ?
-        AND category IN ('data_bms','baterai','setting_bms')
+        AND category IN ('data_bms','baterai','setting_bms','pv','out','grid')
       ORDER BY category, type, created_at DESC
       `,
       [device.device_id],

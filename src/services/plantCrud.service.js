@@ -7,12 +7,45 @@ const {
 
 //===== (getPlants) ======
 const getPlants = async (userId) => {
-  const rows = await db("plants as p")
-    .join("user_plants as up", "p.id", "up.plant_id")
-    .where("up.user_id", userId)
-    .select("p.*", "up.role");
+  const result = await db.raw(
+    `
+    SELECT
+      p.*,
+      up.role,
+      (
+        SELECT MAX(sub.ts)
+        FROM (
+          SELECT MAX(d.created_at) as ts
+          FROM plant_devices pd
+          JOIN device_data d ON d.device_id = pd.device_id
+          WHERE pd.plant_id = p.id
+          UNION ALL
+          SELECT di.last_source_timestamp as ts
+          FROM deye_integrations di
+          WHERE di.plant_id = p.id
+          UNION ALL
+          SELECT di.last_synced_at as ts
+          FROM deye_integrations di
+          WHERE di.plant_id = p.id
+          UNION ALL
+          SELECT dd.last_seen as ts
+          FROM plant_devices pd
+          JOIN deye_devices dd ON dd.device_sn = pd.device_id
+          WHERE pd.plant_id = p.id
+        ) sub
+      ) as latest_data_at,
+      EXISTS(
+        SELECT 1 FROM plant_devices pd WHERE pd.plant_id = p.id
+      ) as has_devices
+    FROM plants p
+    JOIN user_plants up ON p.id = up.plant_id
+    WHERE up.user_id = ?
+    ORDER BY p.id ASC
+    `,
+    [userId],
+  );
 
-  return rows.map((plant) => ({
+  return result.rows.map((plant) => ({
     ...plant,
     role: normalizeAccessRole(plant.role),
     ...getRoleFlags(plant.role),

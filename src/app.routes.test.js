@@ -15,9 +15,13 @@ const createMockHandler = (name) => (req, res) =>
 jest.mock("./controllers/auth.controller", () => ({
   register: createMockHandler("register"),
   login: createMockHandler("login"),
+  googleLogin: createMockHandler("googleLogin"),
   forgotPassword: createMockHandler("forgotPassword"),
   verifyResetCode: createMockHandler("verifyResetCode"),
   updatePassword: createMockHandler("updatePassword"),
+  getProfile: createMockHandler("getProfile"),
+  updateProfile: createMockHandler("updateProfile"),
+  deleteAccount: createMockHandler("deleteAccount"),
 }));
 
 //===== (Mock Data Controller) ======
@@ -77,6 +81,7 @@ const { publishMessage } = require("./config/mqtt");
 const routeCases = [
   ["post", "/api/auth/register", "register", false],
   ["post", "/api/auth/login", "login", false],
+  ["post", "/api/auth/google-login", "googleLogin", false],
   ["post", "/api/auth/forgot-password", "forgotPassword", false],
   ["post", "/api/auth/verify-reset-code", "verifyResetCode", false],
   ["post", "/api/auth/reset-password", "updatePassword", false],
