@@ -6,13 +6,23 @@ const deyeService = require("../src/integrations/deye/deye.service");
 const apply = process.argv.includes("--apply");
 
 const resolveOwnerUserId = async () => {
-  if (process.env.DEYE_OWNER_USER_ID) return process.env.DEYE_OWNER_USER_ID;
+  if (process.env.DEYE_OWNER_USER_ID) {
+    const raw = String(process.env.DEYE_OWNER_USER_ID).trim();
+    const byEmail = await db("users").where({ email: raw }).first("id");
+    if (byEmail) return byEmail.id;
+    const byId = await db("users").where({ id: raw }).first("id");
+    if (byId) return byId.id;
+  }
+
+  const defaultUser = await db("users")
+    .whereIn("email", ["idewanyomanbayusw@gmail.com", "idewbayu14@gmail.com"])
+    .first("id");
+  if (defaultUser) return defaultUser.id;
 
   const users = await db("users").select("id").orderBy("created_at", "asc");
-  if (users.length !== 1) {
-    throw new Error("DEYE_OWNER_USER_ID is required unless the database has exactly one user");
-  }
-  return users[0].id;
+  if (users.length > 0) return users[0].id;
+
+  throw new Error("DEYE_OWNER_USER_ID is required unless the database has exactly one user");
 };
 
 const printPreview = (preview) => {
