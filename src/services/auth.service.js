@@ -43,13 +43,6 @@ const registerUser = async ({ email, password, phone, name }) => {
 
   const normalizedPhone = phone || `email:${email}`;
 
-  if (phone) {
-    const existingPhone = await db("users").where({ phone }).first();
-    if (existingPhone) {
-      throw new Error("Phone already registered");
-    }
-  }
-
   const hashed = await bcrypt.hash(password, 10);
 
   const insertData = {
@@ -187,19 +180,9 @@ const updateUserProfile = async ({
     updatePayload.name = String(name || "").trim();
   }
 
-  // 2. Update Phone if provided
+  // 2. Update Phone if provided (allow duplicate phone across accounts)
   if (phone !== undefined && phone !== null && String(phone).trim() !== "") {
-    const trimmedPhone = String(phone).trim();
-    if (trimmedPhone !== user.phone) {
-      const existingPhone = await db("users")
-        .where({ phone: trimmedPhone })
-        .andWhereNot({ id: userId })
-        .first();
-      if (existingPhone) {
-        throw new Error("Phone number is already in use by another account");
-      }
-      updatePayload.phone = trimmedPhone;
-    }
+    updatePayload.phone = String(phone).trim();
   }
 
   // 3. Update Password if provided
