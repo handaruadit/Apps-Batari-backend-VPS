@@ -79,6 +79,7 @@ const getMonthlyChartData = async ({ deviceIds, month }) => {
     source: CHART_ENERGY_SOURCE,
     items: dailyItems.map((item) => ({
       day: item.day,
+      label: String(item.day),
       date: item.date,
       ...buildChartEnergyItem(item),
     })),
@@ -114,6 +115,62 @@ const getYearlyChartData = async ({ deviceIds, year }) => {
     unit: CHART_ENERGY_UNIT,
     source: CHART_ENERGY_SOURCE,
     items: monthlyItems,
+  };
+};
+
+//===== (getLifetimeChartData) ======
+const getLifetimeChartData = async ({ deviceIds }) => {
+  const currentYear = new Date().getFullYear();
+  const startYear = Math.max(2023, currentYear - 4);
+  const years = Array.from({ length: currentYear - startYear + 1 }, (_, i) => startYear + i);
+
+  const yearlyItems = await Promise.all(
+    years.map(async (y) => {
+      try {
+        const yearData = await getYearlyChartData({ deviceIds, year: String(y) });
+        const yearItems = yearData.items || [];
+        const pv = yearItems.reduce((acc, it) => acc + (it.pv || 0), 0);
+        const grid = yearItems.reduce((acc, it) => acc + (it.grid || 0), 0);
+        const battery = yearItems.reduce((acc, it) => acc + (it.battery || 0), 0);
+        const pvGenerate = yearItems.reduce((acc, it) => acc + (it.pvGenerate || 0), 0);
+        const exportKwh = yearItems.reduce((acc, it) => acc + (it.export || 0), 0);
+        const charge = yearItems.reduce((acc, it) => acc + (it.charge || 0), 0);
+        const totalConsumption = yearItems.reduce((acc, it) => acc + (it.totalConsumption || 0), 0);
+        const totalProduction = yearItems.reduce((acc, it) => acc + (it.totalProduction || 0), 0);
+
+        return {
+          year: y,
+          label: String(y),
+          pv: Number(pv.toFixed(2)),
+          grid: Number(grid.toFixed(2)),
+          battery: Number(battery.toFixed(2)),
+          pvGenerate: Number(pvGenerate.toFixed(2)),
+          export: Number(exportKwh.toFixed(2)),
+          charge: Number(charge.toFixed(2)),
+          totalConsumption: Number(totalConsumption.toFixed(2)),
+          totalProduction: Number(totalProduction.toFixed(2)),
+        };
+      } catch {
+        return {
+          year: y,
+          label: String(y),
+          pv: 0,
+          grid: 0,
+          battery: 0,
+          pvGenerate: 0,
+          export: 0,
+          charge: 0,
+          totalConsumption: 0,
+          totalProduction: 0,
+        };
+      }
+    })
+  );
+
+  return {
+    unit: CHART_ENERGY_UNIT,
+    source: CHART_ENERGY_SOURCE,
+    items: yearlyItems,
   };
 };
 
@@ -183,5 +240,6 @@ const getLatestEnergyData = async ({ deviceIds }) => {
 module.exports = {
   getMonthlyChartData,
   getYearlyChartData,
+  getLifetimeChartData,
   getLatestEnergyData,
 };

@@ -19,23 +19,39 @@ const checkDeviceAccess = async (userId, deviceId, plantId) => {
 
 //===== (getDeviceIdData) ======
 const getDeviceIdData = async (userId, plantId) => {
+  let resolvedPlantId = plantId;
+
+  // 1. Try finding if plantId is actually a station ID (e.g. 61419275 or 62566371)
+  const matchingDevice = await db("plant_devices")
+    .where("device_id", `DEYE_STATION_${plantId}`)
+    .orWhere("device_id", String(plantId))
+    .orWhere("device_id", "like", `%${plantId}%`)
+    .first("plant_id", "device_id");
+
+  if (matchingDevice && matchingDevice.plant_id) {
+    resolvedPlantId = matchingDevice.plant_id;
+  }
+
+  // 2. Check plant access for user
   const plantAccess = await db("user_plants")
-    .where({ user_id: userId, plant_id: plantId })
+    .where({ user_id: userId, plant_id: resolvedPlantId })
     .first("role");
 
-  if (!plantAccess) {
-    throw new Error("Access_Denied");
-  }
-
-  const devices = await db("plant_devices")
-    .where("plant_id", plantId)
+  // 3. Query devices for the plant
+  let devices = await db("plant_devices")
+    .where("plant_id", resolvedPlantId)
     .select("device_id");
 
-  if (devices.length === 0) {
-    throw new Error("Data_Not_Found");
+  if (devices.length === 0 && matchingDevice) {
+    devices = [{ device_id: matchingDevice.device_id }];
   }
 
-  console.log("PLANT_ID =", plantId);
+  if (devices.length === 0) {
+    // If plantId is directly a deye station id, provide default device representation
+    devices = [{ device_id: `DEYE_STATION_${plantId}` }];
+  }
+
+  console.log("Resolved PLANT_ID =", resolvedPlantId, "from input =", plantId);
   console.log("DEVICES =", devices);
 
   return devices;

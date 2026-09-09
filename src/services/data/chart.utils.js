@@ -113,6 +113,7 @@ const buildChartSeries = (rows) => {
   const upsLoadRows = [];
   const gridRows = [];
   const batteryRows = [];
+  const socRows = [];
   const pvGenerateRows = [];
   const exportRows = [];
   const chargeRows = [];
@@ -151,11 +152,14 @@ const buildChartSeries = (rows) => {
       gridRows.push(formattedRow);
     }
 
-    if (
-      matchesAlias(row.category, CHART_CATEGORY_ALIASES.battery) &&
-      matchesAlias(row.type, CHART_TYPE_ALIASES.power)
-    ) {
-      batteryRows.push(formattedRow);
+    if (matchesAlias(row.category, CHART_CATEGORY_ALIASES.battery)) {
+      if (matchesAlias(row.type, CHART_TYPE_ALIASES.power)) {
+        batteryRows.push(formattedRow);
+      }
+
+      if (matchesAlias(row.type, CHART_TYPE_ALIASES.soc)) {
+        socRows.push(formattedRow);
+      }
     }
 
     if (matchesAlias(row.category, CHART_CATEGORY_ALIASES.productionFlow)) {
@@ -179,6 +183,7 @@ const buildChartSeries = (rows) => {
     upsLoad: upsLoadRows.length ? upsLoadRows : loadRows,
     grid: gridRows,
     battery: batteryRows,
+    soc: socRows,
     pvGenerate: pvGenerateRows.length
       ? pvGenerateRows
       : productionRows.length

@@ -15,6 +15,7 @@ const CHART_TYPE_ALIASES = {
   pvGenerate: ["pvGenerate", "pv_generate", "pvgenerate"],
   export: ["export", "exportPower", "export_power", "exportpower"],
   charge: ["charge", "chargePowerOut", "charge_power_out", "chargepowerout"],
+  soc: ["soc", "stateOfCharge", "state_of_charge"],
 };
 
 //===== (Konfigurasi Chart) ======
@@ -27,6 +28,7 @@ const CHART_SERIES_CONFIG = {
   upsLoad: { category: "out", type: "vaPower" },
   grid: { category: "grid", type: "power" },
   battery: { category: "baterai", type: "power" },
+  soc: { category: "baterai", type: "soc" },
   pvGenerate: { category: "production", type: "pvGenerate" },
   export: { category: "production", type: "export" },
   charge: { category: "production", type: "charge" },
