@@ -184,11 +184,14 @@ const buildChartSeries = (rows) => {
     grid: gridRows,
     battery: batteryRows,
     soc: socRows,
-    pvGenerate: pvGenerateRows.length
-      ? pvGenerateRows
-      : loadRows.length
-        ? loadRows
-        : upsLoadRows,
+    pvGenerate:
+      pvGenerateRows.length > loadRows.length
+        ? pvGenerateRows
+        : loadRows.length
+          ? loadRows
+          : pvGenerateRows.length
+            ? pvGenerateRows
+            : upsLoadRows,
     export: exportRows,
     charge: chargeRows,
   };
