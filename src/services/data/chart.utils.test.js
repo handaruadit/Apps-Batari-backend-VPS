@@ -56,12 +56,13 @@ describe("chart.utils", () => {
     ]);
 
     expect(series.production[0].value).toBe(2);
-    expect(series.pvGenerate).toEqual(series.production);
-    expect(series.load).toEqual(series.upsLoad);
+    expect(series.pvGenerate[0].value).toBe(1.5);
+    expect(series.load).toEqual([]);
+    expect(series.upsLoad).toEqual([]);
     expect(getSeriesCounts(series)).toMatchObject({
       production: 1,
-      load: 1,
-      upsLoad: 1,
+      load: 0,
+      upsLoad: 0,
       grid: 0,
       battery: 0,
     });

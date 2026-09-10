@@ -120,7 +120,7 @@ const chooseEnergyRows = (
 };
 
 //===== (choosePvGenerateEnergyRows) ======
-const choosePvGenerateEnergyRows = (rows, fallbackPvRows = null) => {
+const choosePvGenerateEnergyRows = (rows, fallbackLoadRows = null) => {
   const pvGenerateRows = chooseEnergyRows(
     rows,
     CHART_CATEGORY_ALIASES.productionFlow,
@@ -131,20 +131,19 @@ const choosePvGenerateEnergyRows = (rows, fallbackPvRows = null) => {
     return pvGenerateRows;
   }
 
-  const pvRows =
-    fallbackPvRows ||
+  const loadRows =
+    fallbackLoadRows ||
     chooseEnergyRows(
       rows,
-      CHART_CATEGORY_ALIASES.pv,
-      CHART_TYPE_ALIASES.chargePower,
+      CHART_CATEGORY_ALIASES.load,
       CHART_TYPE_ALIASES.power,
     );
 
-  if (pvRows.length >= 2) {
-    return pvRows;
+  if (loadRows.length >= 2) {
+    return loadRows;
   }
 
-  return pvGenerateRows.length ? pvGenerateRows : pvRows;
+  return pvGenerateRows.length ? pvGenerateRows : loadRows;
 };
 
 //===== (integrateRowsToKwh) ======

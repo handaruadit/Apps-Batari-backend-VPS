@@ -16,10 +16,11 @@ describe("deye.mapper", () => {
     unknownRawField: "must-not-leak",
   };
 
-  test("maps station aggregate to the five BySense telemetry rows", () => {
+  test("maps station aggregate to BySense telemetry rows including pvGenerate from consumptionPower", () => {
     expect(mapStationLatest(61_419_275, raw)).toEqual([
       { deviceId: "DEYE_STATION_61419275", category: "pv", type: "chargePower", value: 4.21, createdAt: "2026-08-13T06:18:08.000Z" },
       { deviceId: "DEYE_STATION_61419275", category: "out", type: "power", value: 2.83, createdAt: "2026-08-13T06:18:08.000Z" },
+      { deviceId: "DEYE_STATION_61419275", category: "production", type: "pvGenerate", value: 2.83, createdAt: "2026-08-13T06:18:08.000Z" },
       { deviceId: "DEYE_STATION_61419275", category: "grid", type: "power", value: 0.95, createdAt: "2026-08-13T06:18:08.000Z" },
       { deviceId: "DEYE_STATION_61419275", category: "baterai", type: "power", value: -0.43, createdAt: "2026-08-13T06:18:08.000Z" },
       { deviceId: "DEYE_STATION_61419275", category: "baterai", type: "soc", value: 87, createdAt: "2026-08-13T06:18:08.000Z" },
@@ -41,7 +42,7 @@ describe("deye.mapper", () => {
     );
   });
 
-  test("uses purchase or wire power when Deye omits gridPower", () => {
+  test("uses wire power primarily or falls back when wirePower is missing", () => {
     const base = {
       generationPower: 0,
       consumptionPower: 4780,
@@ -50,21 +51,21 @@ describe("deye.mapper", () => {
       lastUpdateTime: 1_786_601_888,
     };
 
-    const fromPurchase = mapStationLatest(1, {
+    const fromWire = mapStationLatest(1, {
       ...base,
-      gridPower: null,
+      gridPower: 1200,
       purchasePower: 4900,
       wirePower: 4944,
     });
-    const fromWire = mapStationLatest(1, {
+    const fromFallback = mapStationLatest(1, {
       ...base,
-      gridPower: null,
-      purchasePower: null,
-      wirePower: 4944,
+      gridPower: 1200,
+      purchasePower: 4900,
+      wirePower: null,
     });
 
-    expect(fromPurchase.find((item) => item.category === "grid")?.value).toBe(4.9);
     expect(fromWire.find((item) => item.category === "grid")?.value).toBe(4.944);
+    expect(fromFallback.find((item) => item.category === "grid")?.value).toBe(1.2);
   });
 
   test("normalizes W/kW/MW and seconds/milliseconds timestamps", () => {

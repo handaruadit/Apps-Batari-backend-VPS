@@ -1,9 +1,10 @@
 const MAPPING = Object.freeze([
   { field: "generationPower", category: "pv", type: "chargePower", kind: "power" },
   { field: "consumptionPower", category: "out", type: "power", kind: "power" },
+  { field: "consumptionPower", category: "production", type: "pvGenerate", kind: "power" },
   {
-    field: "gridPower",
-    fallbackFields: ["purchasePower", "wirePower"],
+    field: "wirePower",
+    fallbackFields: ["gridPower", "purchasePower"],
     category: "grid",
     type: "power",
     kind: "power",

@@ -98,12 +98,18 @@ const getChartData = async ({ plantId, deviceIds, segment, date }) => {
   }
 
   // Pull real 5-minute telemetry directly from Deye Cloud API
-  let stationId = Number(plantId);
+  const ID_ALIASES = {
+    62566372: 62506492,
+    62566373: 62448210,
+    62566374: 62435287,
+    62566375: 62433430,
+  };
+  let stationId = ID_ALIASES[Number(plantId)] || Number(plantId);
   if (!Number.isFinite(stationId) || stationId < 100000) {
     const firstDevice = Array.isArray(deviceIds) ? deviceIds[0] : "";
     const match = String(firstDevice).match(/\d{7,10}/);
     if (match) {
-      stationId = Number(match[0]);
+      stationId = ID_ALIASES[Number(match[0])] || Number(match[0]);
     }
   }
 
@@ -135,7 +141,7 @@ const getChartData = async ({ plantId, deviceIds, segment, date }) => {
           const iso = new Date(item.timeStamp * 1000).toISOString();
           const pvKw = Number(((item.generationPower || 0) / 1000).toFixed(2));
           const loadKw = Number(((item.consumptionPower || 0) / 1000).toFixed(2));
-          const gridKw = Number((((item.wirePower ?? item.purchasePower ?? 0)) / 1000).toFixed(2));
+          const gridKw = Number(((item.wirePower ?? 0) / 1000).toFixed(2));
           const battKw = Number(((item.batteryPower || 0) / 1000).toFixed(2));
           const socVal = Number(Number(item.batterySOC ?? 0).toFixed(1));
 
@@ -143,14 +149,14 @@ const getChartData = async ({ plantId, deviceIds, segment, date }) => {
           load.push({ id: idx, value: loadKw, created_at: iso, timestamp: item.timeStamp });
           grid.push({ id: idx, value: gridKw, created_at: iso, timestamp: item.timeStamp });
           battery.push({ id: idx, value: battKw, created_at: iso, timestamp: item.timeStamp });
-          pvGenerate.push({ id: idx, value: pvKw, created_at: iso, timestamp: item.timeStamp });
+          pvGenerate.push({ id: idx, value: loadKw, created_at: iso, timestamp: item.timeStamp });
           soc.push({ id: idx, value: socVal, created_at: iso, timestamp: item.timeStamp });
         });
 
         const seriesData = {
           production,
-          load,
-          upsLoad: load,
+          load: [],
+          upsLoad: [],
           grid,
           battery,
           soc,

@@ -121,8 +121,8 @@ const getYearlyChartData = async ({ deviceIds, year }) => {
 //===== (getLifetimeChartData) ======
 const getLifetimeChartData = async ({ deviceIds }) => {
   const currentYear = new Date().getFullYear();
-  const startYear = Math.max(2023, currentYear - 4);
-  const years = Array.from({ length: currentYear - startYear + 1 }, (_, i) => startYear + i);
+  const startYear = 2023;
+  const years = Array.from({ length: Math.max(1, currentYear - startYear + 1) }, (_, i) => startYear + i);
 
   const yearlyItems = await Promise.all(
     years.map(async (y) => {

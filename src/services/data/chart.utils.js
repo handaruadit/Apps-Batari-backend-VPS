@@ -179,16 +179,16 @@ const buildChartSeries = (rows) => {
 
   return {
     production: productionRows.length ? productionRows : pvPowerRows,
-    load: loadRows.length ? loadRows : upsLoadRows,
-    upsLoad: upsLoadRows.length ? upsLoadRows : loadRows,
+    load: [],
+    upsLoad: [],
     grid: gridRows,
     battery: batteryRows,
     soc: socRows,
     pvGenerate: pvGenerateRows.length
       ? pvGenerateRows
-      : productionRows.length
-        ? productionRows
-        : pvPowerRows,
+      : loadRows.length
+        ? loadRows
+        : upsLoadRows,
     export: exportRows,
     charge: chargeRows,
   };
@@ -378,7 +378,7 @@ const buildMockChartSeries = ({ plantId, segment, date }) => {
   const series = {};
 
   Object.entries(CHART_SERIES_CONFIG).forEach(([seriesKey, config]) => {
-    if (!MOCK_CHART_SERIES_KEYS.includes(seriesKey)) {
+    if (!MOCK_CHART_SERIES_KEYS.includes(seriesKey) || seriesKey === 'load' || seriesKey === 'upsLoad') {
       series[seriesKey] = [];
       return;
     }
