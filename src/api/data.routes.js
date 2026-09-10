@@ -200,7 +200,12 @@ router.get("/stations/:stationId", async (req, res) => {
     const pv = latest ? Number(((latest.generationPower || 0) / 1000).toFixed(2)) : 0;
     const load = latest ? Number(((latest.consumptionPower || 0) / 1000).toFixed(2)) : 0;
     const grid = latest ? Number(((latest.wirePower ?? 0) / 1000).toFixed(2)) : 0;
-    const battery = latest ? Number(((latest.batteryPower || 0) / 1000).toFixed(2)) : 0;
+    let rawBatt = latest?.batteryPower;
+    if (rawBatt === undefined || rawBatt === null || rawBatt === 0) {
+      if (latest?.chargePower) rawBatt = -Math.abs(latest.chargePower);
+      else if (latest?.dischargePower) rawBatt = Math.abs(latest.dischargePower);
+    }
+    const battery = latest ? Number(((rawBatt || 0) / 1000).toFixed(2)) : 0;
     const soc = latest && latest.batterySOC != null ? Number(Number(latest.batterySOC).toFixed(1)) : 0;
     const lastUpdateIso = latest?.lastUpdateTime
       ? new Date(latest.lastUpdateTime * 1000).toISOString()
