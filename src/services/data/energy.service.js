@@ -195,9 +195,14 @@ const getLatestEnergyData = async ({ deviceIds }) => {
       CHART_TYPE_ALIASES.chargePower,
       CHART_TYPE_ALIASES.power,
     );
+    const loadRows = chooseEnergyRows(
+      rows,
+      CHART_CATEGORY_ALIASES.load,
+      CHART_TYPE_ALIASES.power,
+    );
 
     return buildEnergyPayload({
-      consumptionKwh: integrateRowsToKwh(pvRows),
+      consumptionKwh: integrateRowsToKwh(loadRows.length ? loadRows : pvRows),
       batteryKwh: integrateRowsToKwh(
         chooseEnergyRows(
           rows,
@@ -213,7 +218,7 @@ const getLatestEnergyData = async ({ deviceIds }) => {
         ),
       ),
       pvGenerateKwh: integrateRowsToKwh(
-        choosePvGenerateEnergyRows(rows, pvRows),
+        choosePvGenerateEnergyRows(rows, loadRows),
       ),
       exportKwh: integrateRowsToKwh(
         chooseEnergyRows(

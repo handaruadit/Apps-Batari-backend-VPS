@@ -210,6 +210,11 @@ const getDailyKwhFromRows = (rows) => {
     CHART_TYPE_ALIASES.power,
   );
   const pvKwh = positiveKwh(integrateRowsToKwh(pvRows));
+  const loadRows = chooseEnergyRows(
+    rows,
+    CHART_CATEGORY_ALIASES.load,
+    CHART_TYPE_ALIASES.power,
+  );
   const gridKwh = positiveKwh(
     integrateRowsToKwh(
       chooseEnergyRows(
@@ -229,7 +234,7 @@ const getDailyKwhFromRows = (rows) => {
     ),
   );
   const pvGenerateKwh = positiveKwh(
-    integrateRowsToKwh(choosePvGenerateEnergyRows(rows, pvRows)),
+    integrateRowsToKwh(choosePvGenerateEnergyRows(rows, loadRows)),
   );
   const exportKwh = positiveKwh(
     integrateRowsToKwh(
