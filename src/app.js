@@ -12,23 +12,26 @@ const app = express();
 // Helmet — automatic security headers (X-Content-Type-Options, X-Frame-Options, etc.)
 app.use(helmet());
 
-// CORS — restrict to known origins only
+// CORS configuration
 const ALLOWED_ORIGINS = [
   "https://bysense.batarienergy.com",
   "https://www.bysense.batarienergy.com",
+  "http://bysense.batarienergy.com",
   "http://localhost:3000",
   "http://localhost:3003",
+  "http://145.79.11.228:3000",
+  "http://145.79.11.228:3003",
 ];
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (server-to-server, mobile apps, curl)
+      // Allow requests with no origin (server-to-server, next.js rewrites, mobile apps, curl)
       if (!origin) return callback(null, true);
-      if (ALLOWED_ORIGINS.includes(origin)) {
+      if (ALLOWED_ORIGINS.some((allowed) => origin.startsWith(allowed))) {
         return callback(null, true);
       }
-      return callback(new Error("CORS policy: Origin not allowed"), false);
+      return callback(null, false);
     },
     credentials: true,
   })
