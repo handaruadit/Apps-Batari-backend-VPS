@@ -113,7 +113,21 @@ router.get("/stations", auth, async (req, res) => {
 const stationEnergySummaryCache = new Map();
 
 async function getStationTodayEnergySummary(stationId) {
-  const cached = stationEnergySummaryCache.get(stationId);
+  const numId = Number(stationId);
+  // Bypass Deye Cloud API for custom database plants (e.g. ID 42, 10, 14) that do not have 8-digit Deye station IDs
+  if (!numId || numId < 1000000) {
+    return {
+      consumptionTodayKwh: 0,
+      productionTodayKwh: 0,
+      pvKwh: 0,
+      gridKwh: 0,
+      exportKwh: 0,
+      batteryChargeKwh: 0,
+      batteryDischargeKwh: 0,
+    };
+  }
+
+  const cached = stationEnergySummaryCache.get(numId);
   const nowMs = Date.now();
   if (cached && nowMs - cached.timestamp < 60000) {
     return cached.summary;

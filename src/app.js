@@ -7,6 +7,9 @@ const rateLimit = require("express-rate-limit");
 //===== (Application) ======
 const app = express();
 
+// Trust reverse proxy (Nginx / Cloudflare) for accurate rate limiting and IP detection
+app.set("trust proxy", 1);
+
 //===== (Security Middleware) ======
 
 // Helmet — automatic security headers (X-Content-Type-Options, X-Frame-Options, etc.)
