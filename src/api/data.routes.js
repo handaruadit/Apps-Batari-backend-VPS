@@ -20,9 +20,69 @@ router.post("/manual/send", auth, sendManualPlantData);
 const deyeService = require("../integrations/deye/deye.service");
 
 //===== (Station Endpoints for Web App — Direct from Live Deye Cloud) ======
+//===== (Live Energy Cache from Deye Cloud Inverters) ======
+let allStationsEnergyCache = { timestamp: 0, map: new Map() };
+
+async function getLiveStationEnergyMap(stationIds = []) {
+  const now = Date.now();
+  // 2 minutes in-memory cache for ultra-fast response times & zero rate-limit issues
+  if (allStationsEnergyCache.map.size > 0 && now - allStationsEnergyCache.timestamp < 120000) {
+    return allStationsEnergyCache.map;
+  }
+
+  try {
+    const deyeClient = require("../integrations/deye/deye.client");
+    let allDevices = [];
+    const chunkSize = 8;
+    for (let i = 0; i < stationIds.length; i += chunkSize) {
+      const chunk = stationIds.slice(i, i + chunkSize);
+      const res = await deyeClient.post("/v1.0/station/device", { stationIds: chunk });
+      if (Array.isArray(res?.deviceListItems)) allDevices.push(...res.deviceListItems);
+    }
+
+    const inverters = allDevices.filter(d => d.deviceType === "INVERTER");
+    const inverterSns = inverters.map(d => d.deviceSn);
+
+    let allDeviceData = [];
+    for (let i = 0; i < inverterSns.length; i += 10) {
+      const chunk = inverterSns.slice(i, i + 10);
+      const res = await deyeClient.post("/v1.0/device/latest", { deviceList: chunk });
+      if (Array.isArray(res?.deviceDataList)) allDeviceData.push(...res.deviceDataList);
+    }
+
+    const map = new Map();
+    allDeviceData.forEach(d => {
+      const inv = inverters.find(i => i.deviceSn === d.deviceSn);
+      if (!inv) return;
+      const stId = Number(inv.stationId);
+      if (!map.has(stId)) map.set(stId, { daily: 0, total: 0 });
+      const cur = map.get(stId);
+      const daily = Number(d.dataList?.find(k => k.key === "DailyActiveProduction")?.value || 0);
+      const total = Number(d.dataList?.find(k => k.key === "TotalActiveProduction")?.value || 0);
+      cur.daily = Number((cur.daily + daily).toFixed(2));
+      cur.total = Number((cur.total + total).toFixed(2));
+    });
+
+    if (map.size > 0) {
+      allStationsEnergyCache = { timestamp: now, map };
+    }
+    return map;
+  } catch (err) {
+    console.warn("[data.routes] getLiveStationEnergyMap warning:", err.message);
+    return allStationsEnergyCache.map;
+  }
+}
+
 router.get("/stations", auth, async (req, res) => {
   try {
     const rawList = await deyeService.listStations();
+    const stationIds = (rawList || [])
+      .map(st => Number(st.stationId || st.id))
+      .filter(id => id && id >= 1000000);
+
+    // Retrieve authentic real-time daily & accumulative energy from Deye Cloud inverters
+    const liveEnergyMap = await getLiveStationEnergyMap(stationIds);
+
     const stations = (rawList || [])
 
       .map(st => {
@@ -58,13 +118,18 @@ router.get("/stations", auth, async (req, res) => {
 
         const production = status === "Offline" ? 0 : pvKw;
 
+        const liveEnergy = liveEnergyMap.get(Number(id));
         const cachedEnergy = stationEnergySummaryCache.get(Number(id));
-        const dailyProd = st.generationDay != null
-          ? Number(Number(st.generationDay).toFixed(2))
-          : (cachedEnergy?.summary?.productionTodayKwh ?? (st.dailyEnergy != null ? Number(st.dailyEnergy) : undefined));
-        const accProd = st.generationTotal != null
-          ? Number(Number(st.generationTotal).toFixed(2))
-          : (st.totalEnergy != null ? Number(st.totalEnergy) : undefined);
+        const dailyProd = liveEnergy != null && liveEnergy.daily >= 0
+          ? liveEnergy.daily
+          : (st.generationDay != null
+              ? Number(Number(st.generationDay).toFixed(2))
+              : (cachedEnergy?.summary?.productionTodayKwh ?? (st.dailyEnergy != null ? Number(st.dailyEnergy) : undefined)));
+        const accProd = liveEnergy != null && liveEnergy.total >= 0
+          ? liveEnergy.total
+          : (st.generationTotal != null
+              ? Number(Number(st.generationTotal).toFixed(2))
+              : (st.totalEnergy != null ? Number(st.totalEnergy) : undefined));
 
         return {
           id,
