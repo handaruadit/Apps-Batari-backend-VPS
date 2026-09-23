@@ -1,4 +1,4 @@
-//===== (Imports) ======
+﻿//===== (Imports) ======
 const {
   addPlantAccess,
   assignUserToPlant,
@@ -12,6 +12,23 @@ const {
   validateAssignUserPayload,
 } = require("../validators/plant.validator");
 
+const SUPER_ADMIN_EMAILS = [
+  "idewanyomanbayusw@gmail.com",
+  "idewbayu14@gmail.com",
+  "admin@batarienergy.com",
+];
+
+const checkIsAdmin = (req) => {
+  const role = (req.user?.role || "").toLowerCase();
+  const email = (req.user?.email || "").toLowerCase();
+  return (
+    role === "admin" ||
+    role === "superadmin" ||
+    role === "super_admin" ||
+    SUPER_ADMIN_EMAILS.includes(email)
+  );
+};
+
 //===== (assignUserToPlantByEmail) ======
 const assignUserToPlantByEmail = async (req, res) => {
   try {
@@ -23,15 +40,16 @@ const assignUserToPlantByEmail = async (req, res) => {
     const plantId = req.body.plant_id || req.body.plantId;
     const email = req.body.email;
     const role = req.body.role;
-    const userId = req.user.userId;
+    const userId = req.user?.userId || req.user?.id;
+    const isAdmin = checkIsAdmin(req);
 
-    const allowed = await canManagePlant(userId, plantId);
+    const allowed = isAdmin || (await canManagePlant(userId, plantId));
     if (!allowed) {
       return res.status(403).json({ message: "Access denied" });
     }
 
     await assignUserToPlant(email, plantId, role);
-    res.json({ status: "user assigned", email });
+    res.json({ status: "success" });
   } catch (err) {
     if (err.message === "User not found") {
       return res.status(404).json({ message: err.message });
@@ -44,9 +62,10 @@ const assignUserToPlantByEmail = async (req, res) => {
 const getPlantAccessData = async (req, res) => {
   try {
     const plantId = req.params.id;
-    const userId = req.user.userId;
+    const userId = req.user?.userId || req.user?.id;
+    const isAdmin = checkIsAdmin(req);
 
-    const allowed = await canManagePlant(userId, plantId);
+    const allowed = isAdmin || (await canManagePlant(userId, plantId));
     if (!allowed) {
       return res.status(403).json({ message: "Access denied" });
     }
@@ -62,9 +81,10 @@ const getPlantAccessData = async (req, res) => {
 const searchPlantAccessUsers = async (req, res) => {
   try {
     const plantId = req.params.id;
-    const userId = req.user.userId;
+    const userId = req.user?.userId || req.user?.id;
+    const isAdmin = checkIsAdmin(req);
 
-    const allowed = await canManagePlant(userId, plantId);
+    const allowed = isAdmin || (await canManagePlant(userId, plantId));
     if (!allowed) {
       return res.status(403).json({ message: "Access denied" });
     }
@@ -83,30 +103,28 @@ const searchPlantAccessUsers = async (req, res) => {
 const addPlantAccessUser = async (req, res) => {
   try {
     const plantId = req.params.id;
-    const actorId = req.user.userId;
+    const userId = req.user?.userId || req.user?.id;
+    const isAdmin = checkIsAdmin(req);
 
-    const allowed = await canManagePlant(actorId, plantId);
+    const allowed = isAdmin || (await canManagePlant(userId, plantId));
     if (!allowed) {
       return res.status(403).json({ message: "Access denied" });
     }
 
-    await addPlantAccess({
+    const access = await addPlantAccess({
       plantId,
       userId: req.body.userId,
-      role: req.body.role || "only_view",
+      role: req.body.role,
     });
 
-    const users = await getPlantAccessList(plantId);
-    res.status(201).json({ status: "success", data: users });
+    res.json({ status: "success", data: access });
   } catch (err) {
     if (err.message === "User_Not_Found") {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ message: "Pengguna tidak ditemukan" });
     }
-
     if (err.message === "Cannot_Assign_Owner") {
-      return res.status(400).json({ message: "Owner role cannot be assigned" });
+      return res.status(400).json({ message: "Tidak dapat mengubah pemilik stasiun" });
     }
-
     res.status(500).json({ message: err.message });
   }
 };
@@ -115,31 +133,29 @@ const addPlantAccessUser = async (req, res) => {
 const updatePlantAccessUser = async (req, res) => {
   try {
     const plantId = req.params.id;
+    const userId = req.user?.userId || req.user?.id;
     const targetUserId = req.params.userId;
-    const actorId = req.user.userId;
+    const isAdmin = checkIsAdmin(req);
 
-    const allowed = await canManagePlant(actorId, plantId);
+    const allowed = isAdmin || (await canManagePlant(userId, plantId));
     if (!allowed) {
       return res.status(403).json({ message: "Access denied" });
     }
 
-    await updatePlantAccess({
+    const access = await updatePlantAccess({
       plantId,
       userId: targetUserId,
       role: req.body.role,
     });
 
-    const users = await getPlantAccessList(plantId);
-    res.json({ status: "success", data: users });
+    res.json({ status: "success", data: access });
   } catch (err) {
-    if (err.message === "Cannot_Modify_Owner") {
-      return res.status(400).json({ message: "Owner access cannot be changed" });
-    }
-
     if (err.message === "Access_Not_Found") {
-      return res.status(404).json({ message: "Access not found" });
+      return res.status(404).json({ message: "Data akses tidak ditemukan" });
     }
-
+    if (err.message === "Cannot_Modify_Owner" || err.message === "Cannot_Assign_Owner") {
+      return res.status(400).json({ message: "Peran pemilik tidak dapat diubah" });
+    }
     res.status(500).json({ message: err.message });
   }
 };
@@ -148,26 +164,28 @@ const updatePlantAccessUser = async (req, res) => {
 const removePlantAccessUser = async (req, res) => {
   try {
     const plantId = req.params.id;
+    const userId = req.user?.userId || req.user?.id;
     const targetUserId = req.params.userId;
-    const actorId = req.user.userId;
+    const isAdmin = checkIsAdmin(req);
 
-    const allowed = await canManagePlant(actorId, plantId);
+    const allowed = isAdmin || (await canManagePlant(userId, plantId));
     if (!allowed) {
       return res.status(403).json({ message: "Access denied" });
     }
 
-    await removePlantAccess({ plantId, userId: targetUserId });
-    const users = await getPlantAccessList(plantId);
-    res.json({ status: "success", data: users });
+    await removePlantAccess({
+      plantId,
+      userId: targetUserId,
+    });
+
+    res.json({ status: "success" });
   } catch (err) {
-    if (err.message === "Cannot_Modify_Owner") {
-      return res.status(400).json({ message: "Owner access cannot be removed" });
-    }
-
     if (err.message === "Access_Not_Found") {
-      return res.status(404).json({ message: "Access not found" });
+      return res.status(404).json({ message: "Data akses tidak ditemukan" });
     }
-
+    if (err.message === "Cannot_Modify_Owner") {
+      return res.status(400).json({ message: "Pemilik stasiun tidak dapat dihapus dari akses" });
+    }
     res.status(500).json({ message: err.message });
   }
 };

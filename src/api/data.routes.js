@@ -23,56 +23,86 @@ const deyeService = require("../integrations/deye/deye.service");
 router.get("/stations", auth, async (req, res) => {
   try {
     const rawList = await deyeService.listStations();
-    const stations = (rawList || []).map(st => {
-      const id = st.stationId || st.id;
-      const status =
-        st.connectionStatus === "NORMAL" || st.status === "NORMAL"
-          ? "Online"
-          : st.connectionStatus === "ALL_OFFLINE" || st.status === "ALL_OFFLINE"
-          ? "Offline"
-          : st.connectionStatus === "NO_DEVICE" || st.status === "NO_DEVICE"
-          ? "Incomplete"
-          : "Online";
-      const pvKw = Number(((st.generationPower || 0) / 1000).toFixed(2));
-      const capacity = Number(st.installedCapacity || st.capacity || 0);
+    const stations = (rawList || [])
 
-      return {
-        id,
-        name: st.stationName || st.name,
-        address: st.locationAddress || "",
-        city: "",
-        province: "",
-        postalCode: "",
-        coordinates: st.locationLat && st.locationLng ? `${st.locationLat}, ${st.locationLng}` : "",
-        timeZone: st.regionTimezone || "Asia/Jakarta",
-        plantsId: String(id),
-        status,
-        comStatus: status,
-        alertsStatus: "No Alerts",
-        capacity,
-        production: pvKw,
-        dailyProduction: Number(((st.generationPower || 0) / 1000 * 0.9).toFixed(1)),
-        accumulativeProduction: 0,
-        accumulativeConsumption: 0,
-        gridConnection: st.gridInterconnectionType || "GRID_TIED",
-        batteryCapacity: "10kWh",
-        batterySoc: Number(st.batterySOC || 0),
-        batteryPower: 0,
-        gridPower: 0,
-        loadPower: 0,
-        currency: "Rp",
-        unitPrice: "1444",
-        constructionCost: "0",
-        creator: st.ownerName || "Deye Cloud",
-        createTime: st.createdDate ? new Date(st.createdDate * 1000).toISOString() : "",
-        weatherTemperature: 28,
-        weatherConditionText: "Sunny",
-        trend: [pvKw * 0.2, pvKw * 0.4, pvKw * 0.6, pvKw * 0.8, pvKw],
-        devices: [],
-        alerts: [],
-        lastUpdateTime: st.lastUpdateTime ? new Date(st.lastUpdateTime * 1000).toISOString() : new Date().toISOString(),
-      };
-    });
+      .map(st => {
+        const id = st.stationId || st.id;
+        const pvKw = Number(((st.generationPower || 0) / 1000).toFixed(2));
+        const capacity = Number(st.installedCapacity || st.capacity || 0);
+
+        let status = "Online";
+        if (
+          st.connectionStatus === "NORMAL" ||
+          st.status === "NORMAL" ||
+          st.connectStatus === 1 ||
+          st.status === 1
+        ) {
+          status = "Online";
+        } else if (
+          st.connectionStatus === "NO_DEVICE" ||
+          st.status === "NO_DEVICE" ||
+          st.connectStatus === 2 ||
+          st.status === 2
+        ) {
+          status = "Incomplete";
+        } else if (
+          st.connectionStatus === "ALL_OFFLINE" ||
+          st.status === "ALL_OFFLINE" ||
+          st.connectStatus === 0 ||
+          st.status === 0 ||
+          st.connectStatus === 3 ||
+          st.status === 3
+        ) {
+          status = "Offline";
+        }
+
+        const production = status === "Offline" ? 0 : pvKw;
+
+        const cachedEnergy = stationEnergySummaryCache.get(Number(id));
+        const dailyProd = st.generationDay != null
+          ? Number(Number(st.generationDay).toFixed(2))
+          : (cachedEnergy?.summary?.productionTodayKwh ?? (st.dailyEnergy != null ? Number(st.dailyEnergy) : undefined));
+        const accProd = st.generationTotal != null
+          ? Number(Number(st.generationTotal).toFixed(2))
+          : (st.totalEnergy != null ? Number(st.totalEnergy) : undefined);
+
+        return {
+          id,
+          name: st.stationName || st.name,
+          address: st.locationAddress || "",
+          city: "",
+          province: "",
+          postalCode: "",
+          coordinates: st.locationLat && st.locationLng ? `${st.locationLat}, ${st.locationLng}` : "",
+          timeZone: st.regionTimezone || "Asia/Jakarta",
+          plantsId: String(id),
+          status,
+          comStatus: status,
+          alertsStatus: (st.alarmCount || 0) > 0 ? "Alerts" : "No Alerts",
+          capacity,
+          production,
+          dailyProduction: dailyProd,
+          accumulativeProduction: accProd,
+          accumulativeConsumption: 0,
+          gridConnection: st.gridInterconnectionType || "GRID_TIED",
+          batteryCapacity: "10kWh",
+          batterySoc: Number(st.batterySOC || 0),
+          batteryPower: 0,
+          gridPower: 0,
+          loadPower: 0,
+          currency: "Rp",
+          unitPrice: "1444",
+          constructionCost: "0",
+          creator: st.ownerName || "Deye Cloud",
+          createTime: st.createdDate ? new Date(st.createdDate * 1000).toISOString() : "",
+          weatherTemperature: 28,
+          weatherConditionText: "Sunny",
+          trend: [pvKw * 0.2, pvKw * 0.4, pvKw * 0.6, pvKw * 0.8, pvKw],
+          devices: [],
+          alerts: [],
+          lastUpdateTime: st.lastUpdateTime ? new Date(st.lastUpdateTime * 1000).toISOString() : new Date().toISOString(),
+        };
+      });
 
     res.json({ success: true, status: "success", data: stations, total: stations.length });
   } catch (err) {
@@ -377,8 +407,8 @@ router.get("/stations/:stationId", auth, async (req, res) => {
         comStatus: computedStatus,
         alertsStatus: "No Alerts",
         capacity,
-        production: pv,
-        pv,
+        production: computedStatus === "Offline" ? 0 : pv,
+        pv: computedStatus === "Offline" ? 0 : pv,
         pvGenerate: load,
         dailyProduction: energySummary.productionTodayKwh,
         productionToday: energySummary.productionTodayKwh,

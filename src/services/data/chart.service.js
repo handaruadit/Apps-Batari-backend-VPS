@@ -58,7 +58,7 @@ const getChartData = async ({ plantId, deviceIds, segment, date }) => {
   const data = buildChartSeries(rows);
   const range = start && end ? { start, end } : null;
 
-  if (hasChartSeriesData(data) && rows.length >= 200) {
+  if (hasChartSeriesData(data) && rows.length > 0) {
     return {
       source: "database",
       counts: getSeriesCounts(data),
@@ -106,7 +106,7 @@ const getChartData = async ({ plantId, deviceIds, segment, date }) => {
   };
   let stationId = ID_ALIASES[Number(plantId)] || Number(plantId);
   if (!Number.isFinite(stationId) || stationId < 100000) {
-    const firstDevice = Array.isArray(deviceIds) ? deviceIds[0] : "";
+    const firstDevice = Array.isArray(deviceIds) ? (typeof deviceIds[0] === "object" ? deviceIds[0].device_id : deviceIds[0]) : "";
     const match = String(firstDevice).match(/\d{7,10}/);
     if (match) {
       stationId = ID_ALIASES[Number(match[0])] || Number(match[0]);
@@ -155,8 +155,8 @@ const getChartData = async ({ plantId, deviceIds, segment, date }) => {
 
         const seriesData = {
           production,
-          load: [],
-          upsLoad: [],
+          load,
+          upsLoad: load,
           grid,
           battery,
           soc,
@@ -198,14 +198,24 @@ const getChartData = async ({ plantId, deviceIds, segment, date }) => {
     };
   }
 
-  const mockData = buildMockChartSeries({ plantId, segment, date });
+  const emptyData = {
+    production: [],
+    load: [],
+    upsLoad: [],
+    grid,
+    battery: [],
+    soc: [],
+    pvGenerate: [],
+    export: [],
+    charge: [],
+  };
 
   return {
-    source: "dummy",
-    counts: getSeriesCounts(mockData),
-    rowCount: rows.length,
+    source: "no_data",
+    counts: getSeriesCounts(emptyData),
+    rowCount: 0,
     range,
-    data: mockData,
+    data: emptyData,
   };
 };
 
