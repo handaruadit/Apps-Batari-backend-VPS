@@ -21,7 +21,7 @@ describe("authentication middleware contract", () => {
     verifyToken.mockReset();
   });
 
-  test("returns the existing response when no token is provided", () => {
+  test("returns 401 when no token is provided", () => {
     const req = { headers: {} };
     const res = createResponse();
     const next = jest.fn();
@@ -29,7 +29,12 @@ describe("authentication middleware contract", () => {
     auth(req, res, next);
 
     expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json).toHaveBeenCalledWith({ message: "No token" });
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "error",
+        message: expect.stringContaining("Authentication required"),
+      })
+    );
     expect(next).not.toHaveBeenCalled();
   });
 
@@ -48,7 +53,7 @@ describe("authentication middleware contract", () => {
     expect(res.status).not.toHaveBeenCalled();
   });
 
-  test("returns the existing response when token verification fails", () => {
+  test("returns 401 when token verification fails", () => {
     verifyToken.mockImplementation(() => {
       throw new Error("invalid");
     });
@@ -59,7 +64,12 @@ describe("authentication middleware contract", () => {
     auth(req, res, next);
 
     expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.json).toHaveBeenCalledWith({ message: "Invalid token" });
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "error",
+        message: expect.stringContaining("Invalid or expired token"),
+      })
+    );
     expect(next).not.toHaveBeenCalled();
   });
 });

@@ -1,11 +1,12 @@
 //===== (Imports) ======
 const express = require("express");
 const router = express.Router();
+const auth = require("../middlewares/auth.middleware");
 
 const { publishMessage } = require("../config/mqtt");
 
 //===== (Publish MQTT Message) ======
-router.post("/publish", (req, res) => {
+router.post("/publish", auth, (req, res) => {
   const { topic, message } = req.body;
 
   if (!topic || !message) {

@@ -85,7 +85,7 @@ const routeCases = [
   ["post", "/api/auth/forgot-password", "forgotPassword", false],
   ["post", "/api/auth/verify-reset-code", "verifyResetCode", false],
   ["post", "/api/auth/reset-password", "updatePassword", false],
-  ["post", "/api/data/manual/send", "sendManualPlantData", false],
+  ["post", "/api/data/manual/send", "sendManualPlantData", true],
   ["get", "/api/data/", "fetchDeviceData", true],
   ["get", "/api/data/chart/monthly", "getMonthlyChart", true],
   ["get", "/api/data/chart/yearly", "getYearlyChart", true],
