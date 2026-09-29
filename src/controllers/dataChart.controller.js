@@ -28,10 +28,25 @@ const getChart = async (req, res) => {
 
     const deviceIds = await getDeviceIdData(userId, plantId, role);
     if (!deviceIds || deviceIds.length === 0) {
-      return res.status(404).json({
-        success: false,
-        status: "error",
-        message: "No devices found for the specified plant",
+      const emptySeries = {
+        production: [],
+        load: [],
+        upsLoad: [],
+        grid: [],
+        battery: [],
+        soc: [],
+        pvGenerate: [],
+        export: [],
+        charge: [],
+      };
+      return res.json({
+        success: true,
+        status: "success",
+        source: "empty",
+        data:
+          segment === "month" || segment === "year" || segment === "lifetime"
+            ? { unit: "kWh", items: [] }
+            : emptySeries,
       });
     }
 
