@@ -1,0 +1,56 @@
+# BySense Web & Backend — Architecture & Agent Guardrails
+
+## 1. Single Source of Truth for Plants / Stations & Database Synchronization
+- **Lokasi Database Riil**: Database PostgreSQL live yang digunakan adalah **`apidb` di VPS Server (`89.116.33.75:5432`)**. NeonDB sudah **USANG dan DILARANG DIGUNAKAN**. Seluruh data mobile app dan website bersumber dari database PostgreSQL VPS ini.
+- **Backend Tunggal**: Backend yang melayani Web dan Mobile adalah satu backend yang sama di `D:\batari-mobile-app\Apps-Batari-backend-VPS`, dideploy di server VPS `/home/batari/batari-mobile-app-backend` (port 3001, PM2 `batari-api`).
+- **Data Stasiun Telemetri**: Bersumber langsung dari Deye Cloud API (31 stasiun operasional).
+- **Mapping Deye Cloud vs Tabel PostgreSQL `plants`**:
+  - Tabel `plants` PostgreSQL memiliki 34 baris. 30 baris di antaranya terhubung dengan stasiun Deye Cloud melalui tabel `deye_integrations` (`plant_id` <-> `station_id`).
+  - **DILARANG MENDORONG ULANG STASIUN DATABASE YANG MEMILIKI `deye_station_id` SEBAGAI DUPLIKAT KE DALAM DAFTAR STASIUN WEB**. Penggabungan aditif yang salah akan menyebabkan jumlah stasiun membengkak menjadi 50.
+  - Hanya stasiun buatan user kustom (yang tidak memiliki integrasi Deye) yang diizinkan ditambahkan ke daftar stasiun.
+  - Jumlah total stasiun standar operasional web adalah **31 stasiun Deye Cloud**.
+- **Sinkronisasi CRUD Plant**:
+  - Semua operasi CRUD (Create, Read, Update, Delete) harus terhubung langsung ke endpoint `/api/plant` di backend VPS.
+  - Saat menghapus plant, frontend harus memanggil `DELETE /api/plant/:id`, memeriksa status HTTP `res.ok`, dan memastikan transaksi database PostgreSQL berhasil menghapus data dari tabel `plants` serta tabel relasi (`user_plants`, `plant_devices`, `device_access_permissions`, `deye_integrations`).
+
+## 2. Aturan Status Stasiun & Integritas Daya
+- **Integritas Status Offline**:
+  - Deye Cloud menandai inverter terputus dengan `connectionStatus: "ALL_OFFLINE"` atau `connectStatus: 0 / 3`.
+  - Beberapa inverter Deye masih mengirim sisa paket telemetri standby (misal: 16 Watt).
+  - **DILARANG MENGUBAH STATUS KE ONLINE HANYA KARENA `production > 0` / `pvKw > 0`**. Jika stasiun berstatus `ALL_OFFLINE`, statusnya mutlak `Offline` dan `production` wajib bernilai `0` kW.
+- **Konsistensi Tabel vs Detail**:
+  - Endpoint `/stations` (tabel) dan `/stations/:stationId` (detail) harus menggunakan logika pemetaan status yang seragam agar indikator status tidak pernah bertolak belakang.
+
+## 3. Grafik Trend Sparkline
+- Sumbu X mencakup rentang 24 jam hari ini (00:00–24:00).
+- Garis data harus berhenti secara adaptif pada jam saat ini (`currentHour`), tidak boleh ditarik mentok langsung ke ujung kanan (24:00).
+- Untuk stasiun non-online (Offline / Incomplete):
+  - Hanya menampilkan 1 parameter (garis PV).
+  - Tanpa isian gradien/arsir di bawah garis.
+  - Jangan gunakan fallback teks `--`; selalu tampilkan garis data atau garis nol adaptif.
+
+## 4. Telemetri Backend & Frontend (Larangan Mutlak Data Dummy / Hardcoded)
+- Backend yang dideploy ke VPS beralamat di `D:\batari-mobile-app\Apps-Batari-backend-VPS` (port 3001).
+- **LARANGAN KERAS DATA DUMMY / HARDCODED / SINTETIS**:
+  - **Larangan Nilai Tiruan & Rumus Buatan**: DILARANG menggunakan nilai statis, rumus sintetis (seperti pengali buatan 2.45 atau nilai estimasi fiktif), data tiruan, atau kurva seragam tiruan pada grafik maupun ringkasan parameter.
+  - **Integritas Multi-Inverter**: Setiap inverter fisik di Deye Cloud memiliki nomor seri unik (`deviceSn`) dan data telemetri individual. Dilarang menduplikasi data antar inverter, membagi rata total stasiun secara sintetis, atau menggunakan angka tiruan. Saat beralih antar inverter di dropdown ("Inverter 1", "Inverter 2", dst.), telemetri daya kW dan produksi harian kWh WAJIB mencerminkan data riil masing-masing unit fisik Deye Cloud secara independen.
+  - **Otentisitas Menu Kotak Kubus (Device List Cards)**:
+    - Kartu perangkat di mobile app maupun web wajib menampilkan metrik performa utama inverter (**Daya Aktif / Active Power kW** dan **Produksi Hari Ini / Daily Yield kWh**) yang bersumber dari pembacaan multi-string sensor live Deye Cloud.
+    - Parameter baterai (**Power, Voltage, Current, SoC**) wajib bersumber dari data telemetri riil baterai/BMS Deye Cloud.
+    - Pada stasiun bertipe On-Grid (tanpa baterai fisik), parameter baterai di lapangan memang bernilai 0 / null; dilarang mengarang nilai baterai sintetis untuk mengisi kekosongan tersebut.
+  - **Sumber Data Tunggal 100% Riil**: Semua parameter telemetri (daya PV, load, grid, baterai, SoC, energi produksi/konsumsi, donut chart, dan grafik kurva) WAJIB bersumber 100% dari data historis riil atau pembacaan sensor live Deye Cloud API / database riil PostgreSQL VPS per stasiun masing-masing.
+  - Setiap stasiun harus memiliki kurva grafik unik sesuai telemetri riil masing-masing stasiun, bukan grafik generik yang serupa antar stasiun.
+  - Angka kapasitas (capacity kW / kWp) harus selalu diambil dari metadata riil stasiun (`capacity` / `pv_capacity`), bukan fallback statis atau string kosong.
+
+## 5. Larangan Akses Langsung ke VPS (Strict Agent Guardrail)
+- **AGENT MUTLAK DILARANG MENYENTUH ATAU MENGAKSES VPS SECARA LANGSUNG**:
+  - Dilarang menjalankan SSH (`ssh batari@...`), SCP (`scp ...`), rsync, atau remote execution apapun ke server VPS (`89.116.33.75`).
+  - Dilarang merestart PM2, menjalankan perintah database jarak jauh, atau mengubah file secara langsung di dalam server VPS.
+  - Agent HANYA diperbolehkan mengubah file di lingkungan lokal dan memberikan dokumentasi serta langkah-langkah terminal yang jelas kepada pengguna (USER) untuk dijalankan secara mandiri.
+
+## 6. Batasan Ketat Perubahan Kode (Strict Scope Boundary — Dilarang "Ngide" Tanpa Instruksi)
+- **DILARANG MENGUBAH / MENAMBAHKAN KODE ATAU FITUR DI LUAR INSTRUKSI EKSPLISIT USER**:
+  - Agent TIDAK BOLEH berinisiatif sendiri ("ngide") mengubah konfigurasi, durasi/timer animasi (seperti splash screen, transisi UI), alur kerja navigasi, atau menambahkan kode/fitur yang tidak secara tegas diperintahkan oleh pengguna.
+  - Modifikasi kode harus dibatasi secara ketat HANYA pada bagian yang diminta atau dibutuhkan langsung untuk menyelesaikan masalah spesifik yang diadukan pengguna.
+  - Jika agent menemukan potensi optimasi atau ide perbaikan di luar lingkup yang diminta, agent WAJIB menanyakannya atau memberikan rekomendasi secara tertulis terlebih dahulu, BUKAN langsung mengubah kode tanpa persetujuan eksplisit dari pengguna.
+
