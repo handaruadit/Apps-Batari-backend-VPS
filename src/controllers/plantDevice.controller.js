@@ -77,39 +77,57 @@ const getPlantDeviceData = async (req, res) => {
     let devices = await getPlantDevices(plantId);
     const plant = await getPlantById(plantId);
 
-    // If no physical inverters returned from plant_devices table, check Deye integration
-    const hasInverters = Array.isArray(devices) && devices.some((d) => d.deviceType === "INVERTER" || d.type === "INVERTER");
-    if (!hasInverters) {
-      let targetStationId = plant?.deye_station_id || (Number(plantId) >= 100000 ? plantId : null);
-      if (!targetStationId) {
-        try {
-          const db = require("../config/db");
-          const integration = await db("deye_integrations")
-            .where("plant_id", String(plantId))
-            .orWhere("station_id", String(plantId))
-            .first("plant_id", "station_id");
-          if (integration?.station_id) {
-            targetStationId = integration.station_id;
-          }
-        } catch (_intErr) {}
-      }
+    // Enrich or fetch physical inverters from Deye Cloud integration
+    let targetStationId = plant?.deye_station_id || (Number(plantId) >= 100000 ? plantId : null);
+    if (!targetStationId) {
+      try {
+        const db = require("../config/db");
+        const integration = await db("deye_integrations")
+          .where("plant_id", String(plantId))
+          .orWhere("station_id", String(plantId))
+          .first("plant_id", "station_id");
+        if (integration?.station_id) {
+          targetStationId = integration.station_id;
+        }
+      } catch (_intErr) {}
+    }
 
-      if (targetStationId) {
-        try {
-          const { fetchDeyeStationDevicesWithLatest } = require("../services/data/deyeDevices.service");
-          const deyeInverters = await fetchDeyeStationDevicesWithLatest(
-            targetStationId,
-            plant,
-            plant?.updated_at || new Date().toISOString(),
-            0,
-            null,
-          );
-          if (Array.isArray(deyeInverters) && deyeInverters.length > 0) {
+    if (targetStationId) {
+      try {
+        const { fetchDeyeStationDevicesWithLatest } = require("../services/data/deyeDevices.service");
+        const deyeInverters = await fetchDeyeStationDevicesWithLatest(
+          targetStationId,
+          plant,
+          plant?.updated_at || new Date().toISOString(),
+          0,
+          null,
+        );
+        if (Array.isArray(deyeInverters) && deyeInverters.length > 0) {
+          if (Array.isArray(devices) && devices.length > 0) {
+            const deyeMap = new Map(deyeInverters.map((d) => [String(d.sn || d.device_id), d]));
+            devices = devices.map((dbDev) => {
+              const matched = deyeMap.get(String(dbDev.device_id || dbDev.sn));
+              if (matched) {
+                return {
+                  ...dbDev,
+                  ...matched,
+                  id: dbDev.id || matched.id,
+                  device_id: dbDev.device_id || matched.device_id,
+                };
+              }
+              return dbDev;
+            });
+            deyeInverters.forEach((deyeDev) => {
+              if (!devices.some((d) => String(d.device_id || d.sn) === String(deyeDev.sn || deyeDev.device_id))) {
+                devices.push(deyeDev);
+              }
+            });
+          } else {
             devices = deyeInverters;
           }
-        } catch (_deyeErr) {
-          console.warn("[plantDevice.controller] Deye inverters fetch fallback:", _deyeErr.message);
         }
+      } catch (_deyeErr) {
+        console.warn("[plantDevice.controller] Deye inverters fetch fallback:", _deyeErr.message);
       }
     }
 

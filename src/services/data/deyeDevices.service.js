@@ -59,18 +59,38 @@ async function fetchDeyeStationDevicesWithLatest(
         return fallback;
       };
 
-      // Solar DC Power (Watts) -> kW
-      const rawSolarW = getNum([
-        "TotalSolarPower",
-        "totalDcInputPower",
-        "dcPowerPv1",
-      ]);
-      const rawAcW = getNum([
-        "TotalInverterOutputPower",
-        "inverterOutputPowerL1l2",
-        "ActivePower",
-        "activePower",
-      ]);
+      // 1. Solar DC Power (Watts) -> sum of all active PV strings (DCPowerPV1..8 / dcPowerPv1..8)
+      let sumDcPowerW = 0;
+      for (let s = 1; s <= 8; s++) {
+        const w = getNum([`dcPowerPv${s}`, `DCPowerPV${s}`]);
+        if (w > 0) sumDcPowerW += w;
+      }
+      const rawSolarW =
+        sumDcPowerW > 0
+          ? sumDcPowerW
+          : getNum([
+              "TotalSolarPower",
+              "totalDcInputPower",
+              "dcPowerPv1",
+              "DCPowerPV1",
+            ]);
+
+      // AC Output Power (Watts)
+      let sumAcPowerW = 0;
+      for (let l = 1; l <= 3; l++) {
+        const w = getNum([`InverterOutputPowerL${l}`, `inverterOutputPowerL${l}`]);
+        if (w > 0) sumAcPowerW += w;
+      }
+      const rawAcW =
+        sumAcPowerW > 0
+          ? sumAcPowerW
+          : getNum([
+              "TotalInverterOutputPower",
+              "inverterOutputPowerL1l2",
+              "ActivePower",
+              "activePower",
+            ]);
+
       const finalPowerKw =
         rawSolarW > 0
           ? Number((rawSolarW / 1000).toFixed(2))
@@ -80,7 +100,7 @@ async function fetchDeyeStationDevicesWithLatest(
               ? Number((pvTotal / inverters.length).toFixed(2))
               : 0;
 
-      // Daily Production (kWh)
+      // 2. Daily Production (kWh)
       const dailyProdKwh = getNum(
         [
           "DailyActiveProduction",
@@ -103,12 +123,28 @@ async function fetchDeyeStationDevicesWithLatest(
       ]);
 
       // Consumption / Load (Watts & kWh)
-      const rawConsW = getNum(["TotalConsumptionPower", "upsLoadPower"]);
+      let sumLoadW = 0;
+      for (let l = 1; l <= 3; l++) {
+        const w = getNum([`LoadPowerL${l}`, `loadPowerL${l}`]);
+        if (w > 0) sumLoadW += w;
+      }
+      const rawConsW =
+        sumLoadW > 0
+          ? sumLoadW
+          : getNum([
+              "UPSLoadPower",
+              "upsLoadPower",
+              "TotalConsumptionPower",
+            ]);
       const consKw = Number((rawConsW / 1000).toFixed(2));
       const dailyConsKwh = getNum(["DailyConsumption"]);
 
       // Grid (Watts)
-      const rawGridW = getNum(["TotalGridPower", "totalGridPower"]);
+      const rawGridW = getNum([
+        "TotalGridPower",
+        "totalGridPower",
+        "TotalExternalCTPower",
+      ]);
       const gridKw = Number((rawGridW / 1000).toFixed(2));
 
       // Battery parameters
@@ -124,6 +160,7 @@ async function fetchDeyeStationDevicesWithLatest(
         "BatteryTotalCurrent",
         "batteryCurrent",
         "bmsCurrent",
+        "BatteryCurrent1",
       ]);
       const battTemp = getNum([
         "Temperature- Battery",
@@ -154,7 +191,7 @@ async function fetchDeyeStationDevicesWithLatest(
         {
           category: "baterai",
           type: "power",
-          value: battKw,
+          value: Math.abs(battKw),
           created_at: lastUpdateIso,
         },
         {
@@ -172,7 +209,7 @@ async function fetchDeyeStationDevicesWithLatest(
         {
           category: "baterai",
           type: "current",
-          value: battCurrent,
+          value: Math.abs(battCurrent),
           created_at: lastUpdateIso,
         },
         {
@@ -210,10 +247,10 @@ async function fetchDeyeStationDevicesWithLatest(
         consumptionPower: consKw,
         dailyConsumption: Number(Number(dailyConsKwh).toFixed(2)),
         gridPower: gridKw,
-        batteryPower: battKw,
+        batteryPower: Math.abs(battKw),
         batterySoc: battSoc,
         batteryVoltage: battVoltage,
-        batteryCurrent: battCurrent,
+        batteryCurrent: Math.abs(battCurrent),
         batteryTemp: battTemp,
         lastSeen: lastUpdateIso,
         latestData,
