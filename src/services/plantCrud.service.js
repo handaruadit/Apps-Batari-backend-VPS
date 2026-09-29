@@ -1,17 +1,86 @@
-﻿//===== (Imports) ======
+//===== (Imports) ======
 const db = require("../config/db");
 const {
   getRoleFlags,
   normalizeAccessRole,
 } = require("./plantAccess.service");
+const deyeService = require("../integrations/deye/deye.service");
+const deyeRepository = require("../integrations/deye/deye.repository");
 
 const isValidUuid = (str) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     String(str || "")
   );
 
+let lastDeyeSyncCheck = 0;
+const DEYE_SYNC_CHECK_INTERVAL_MS = 60 * 1000; // Check at most once every minute
+
+const syncMissingDeyeStations = async () => {
+  const now = Date.now();
+  if (now - lastDeyeSyncCheck < DEYE_SYNC_CHECK_INTERVAL_MS) return;
+  lastDeyeSyncCheck = now;
+
+  try {
+    const rawStations = await deyeService.listStations();
+    if (!Array.isArray(rawStations) || rawStations.length === 0) return;
+
+    const existingIntegrations = await db("deye_integrations").select("station_id");
+    const existingStationIds = new Set(existingIntegrations.map((i) => Number(i.station_id)));
+
+    const missing = rawStations.filter((st) => {
+      const sId = Number(st.stationId || st.id);
+      return sId && !existingStationIds.has(sId);
+    });
+
+    if (missing.length === 0) return;
+
+    console.log(`[Deye AutoSync] Found ${missing.length} unintegrated Deye station(s). Syncing into PostgreSQL plants...`);
+
+    const adminUser = await db("users")
+      .whereIn("email", ["idewanyomanbayusw@gmail.com", "idewbayu14@gmail.com", "admin@batarienergy.com"])
+      .first("id");
+    const ownerUserId = adminUser ? adminUser.id : (await db("users").first("id"))?.id;
+    if (!ownerUserId) {
+      console.warn("[Deye AutoSync] No user found to assign as plant owner.");
+      return;
+    }
+
+    const repo = deyeRepository();
+    for (const st of missing) {
+      try {
+        let devices = [];
+        try {
+          devices = await deyeService.getStationDevices(st.stationId || st.id);
+        } catch {}
+
+        await repo.importStation({
+          ownerUserId,
+          station: {
+            stationId: Number(st.stationId || st.id),
+            stationName: st.stationName || st.name || `Deye Station ${st.stationId || st.id}`,
+            locationAddress: st.locationAddress || st.address || st.location || "Lokasi belum tersedia",
+            locationLat: Number(st.locationLat || st.latitude || 0),
+            locationLng: Number(st.locationLng || st.longitude || 0),
+            regionTimezone: st.regionTimezone || st.timezone || "Asia/Jakarta",
+            capacity: Number(st.capacity || st.installedCapacity || 0),
+          },
+          devices: Array.isArray(devices) ? devices : [],
+        });
+        console.log(`[Deye AutoSync] Successfully imported station ${st.stationId || st.id} (${st.stationName || st.name}) into plants table.`);
+      } catch (err) {
+        console.warn(`[Deye AutoSync] Failed to import station ${st.stationId || st.id}:`, err.message);
+      }
+    }
+  } catch (err) {
+    console.warn("[Deye AutoSync] Error checking missing Deye stations:", err.message);
+  }
+};
+
 //===== (getPlants) ======
 const getPlants = async (userId, isAdmin = false) => {
+  // Seamlessly check & sync any unintegrated Deye station (e.g. KBS Timbangan 3 or newly added ones)
+  await syncMissingDeyeStations().catch(() => {});
+
   const safeUserId = isValidUuid(userId) ? userId : null;
   const query = isAdmin
     ? `
@@ -90,8 +159,15 @@ const getPlants = async (userId, isAdmin = false) => {
 
   return result.rows.map((plant) => {
     const roleFlags = getRoleFlags(plant.role);
+    const hasRecentData = plant.latest_data_at
+      ? Date.now() - new Date(plant.latest_data_at).getTime() <= 15 * 60 * 1000
+      : false;
+    const isOnline = Boolean(plant.has_devices && hasRecentData);
+
     return {
       ...plant,
+      is_online: isOnline,
+      connection_status: isOnline ? "Online" : "Offline",
       role: normalizeAccessRole(plant.role),
       accessRole: normalizeAccessRole(plant.role),
       canManage: isAdmin || roleFlags.canManage,
