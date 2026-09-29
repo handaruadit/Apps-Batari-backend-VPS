@@ -6,7 +6,6 @@ const {
   getSeriesCounts,
   hasChartSeriesData,
   isMockChartEnabled,
-  buildMockChartSeries,
 } = require("./chart.utils");
 const { getChartRows } = require("./data.repository");
 const {
@@ -54,19 +53,7 @@ const getChartData = async ({ plantId, deviceIds, segment, date }) => {
   }
 
   const { start, end } = getChartDateRange(segment, date);
-  const rows = await getChartRows({ deviceIds, start, end });
-  const data = buildChartSeries(rows);
   const range = start && end ? { start, end } : null;
-
-  if (hasChartSeriesData(data) && rows.length > 0) {
-    return {
-      source: "database",
-      counts: getSeriesCounts(data),
-      rowCount: rows.length,
-      range,
-      data,
-    };
-  }
 
   // Check if date is in the future
   const nowMs = Date.now();
@@ -97,7 +84,7 @@ const getChartData = async ({ plantId, deviceIds, segment, date }) => {
     }
   }
 
-  // Pull real 5-minute telemetry directly from Deye Cloud API
+  // 1. Resolve authentic Deye Cloud Station ID
   const ID_ALIASES = {
     62566372: 62506492,
     62566373: 62448210,
@@ -106,6 +93,18 @@ const getChartData = async ({ plantId, deviceIds, segment, date }) => {
   };
   let stationId = ID_ALIASES[Number(plantId)] || Number(plantId);
   if (!Number.isFinite(stationId) || stationId < 100000) {
+    try {
+      const db = require("../../config/db");
+      const integration = await db("deye_integrations")
+        .where("plant_id", String(plantId))
+        .orWhere("station_id", String(plantId))
+        .first("station_id");
+      if (integration?.station_id) {
+        stationId = ID_ALIASES[Number(integration.station_id)] || Number(integration.station_id);
+      }
+    } catch (_) {}
+  }
+  if (!Number.isFinite(stationId) || stationId < 100000) {
     const firstDevice = Array.isArray(deviceIds) ? (typeof deviceIds[0] === "object" ? deviceIds[0].device_id : deviceIds[0]) : "";
     const match = String(firstDevice).match(/\d{7,10}/);
     if (match) {
@@ -113,13 +112,17 @@ const getChartData = async ({ plantId, deviceIds, segment, date }) => {
     }
   }
 
-  if (stationId && yearStr && monthStr && dayStr) {
+  // 2. Prioritize authentic Deye Cloud telemetry for Deye operational stations
+  if (stationId && stationId >= 100000 && yearStr && monthStr && dayStr) {
     try {
       const deyeClient = require("../../integrations/deye/deye.client");
       const [y, m, d] = [Number(yearStr), Number(monthStr), Number(dayStr)];
-      const startTimestamp = Math.floor(new Date(y, m - 1, d, 0, 0, 0).getTime() / 1000);
+      const yyyy = String(y);
+      const mm = String(m).padStart(2, "0");
+      const dd = String(d).padStart(2, "0");
+      const startTimestamp = Math.floor(new Date(`${yyyy}-${mm}-${dd}T00:00:00+07:00`).getTime() / 1000);
       const endTimestamp = Math.min(
-        Math.floor(new Date(y, m - 1, d, 23, 59, 59).getTime() / 1000),
+        Math.floor(new Date(`${yyyy}-${mm}-${dd}T23:59:59+07:00`).getTime() / 1000),
         Math.floor(Date.now() / 1000)
       );
 
@@ -145,19 +148,19 @@ const getChartData = async ({ plantId, deviceIds, segment, date }) => {
           const battKw = Number(((item.batteryPower || 0) / 1000).toFixed(2));
           const socVal = Number(Number(item.batterySOC ?? 0).toFixed(1));
 
-          production.push({ id: idx, value: pvKw, created_at: iso, timestamp: item.timeStamp });
-          load.push({ id: idx, value: loadKw, created_at: iso, timestamp: item.timeStamp });
-          grid.push({ id: idx, value: gridKw, created_at: iso, timestamp: item.timeStamp });
-          battery.push({ id: idx, value: battKw, created_at: iso, timestamp: item.timeStamp });
-          pvGenerate.push({ id: idx, value: loadKw, created_at: iso, timestamp: item.timeStamp });
-          soc.push({ id: idx, value: socVal, created_at: iso, timestamp: item.timeStamp });
+          production.push({ id: idx, value: pvKw, created_at: iso, timestamp: item.timeStamp * 1000 });
+          load.push({ id: idx, value: loadKw, created_at: iso, timestamp: item.timeStamp * 1000 });
+          grid.push({ id: idx, value: gridKw, created_at: iso, timestamp: item.timeStamp * 1000 });
+          battery.push({ id: idx, value: battKw, created_at: iso, timestamp: item.timeStamp * 1000 });
+          pvGenerate.push({ id: idx, value: pvKw, created_at: iso, timestamp: item.timeStamp * 1000 });
+          soc.push({ id: idx, value: socVal, created_at: iso, timestamp: item.timeStamp * 1000 });
         });
 
         const seriesData = {
           production,
           load,
           upsLoad: load,
-          grid,
+          grid: [],
           battery,
           soc,
           pvGenerate,
@@ -174,10 +177,13 @@ const getChartData = async ({ plantId, deviceIds, segment, date }) => {
         };
       }
     } catch (err) {
-      console.warn("[ChartService] Deye history fetch fallback error:", err.message);
+      console.warn("[ChartService] Deye history fetch error:", err.message);
     }
   }
 
+  // 3. Fallback to database telemetry rows if not a Deye station or Deye Cloud has no data
+  const rows = await getChartRows({ deviceIds, start, end });
+  const data = buildChartSeries(rows);
   if (hasChartSeriesData(data)) {
     return {
       source: "database",
@@ -202,7 +208,7 @@ const getChartData = async ({ plantId, deviceIds, segment, date }) => {
     production: [],
     load: [],
     upsLoad: [],
-    grid,
+    grid: [],
     battery: [],
     soc: [],
     pvGenerate: [],

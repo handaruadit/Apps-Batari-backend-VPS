@@ -43,7 +43,7 @@ app.use(
 // Global rate limiter — 1500 requests per 15 minutes per IP (ramah polling data mobile & web)
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 1500,
+  max: 20000,
   standardHeaders: true,
   legacyHeaders: false,
   message: {

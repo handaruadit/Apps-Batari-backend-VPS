@@ -13,6 +13,23 @@ const {
   validateAssignDevicePayload,
 } = require("../validators/plant.validator");
 
+const SUPER_ADMIN_EMAILS = [
+  "idewanyomanbayusw@gmail.com",
+  "idewbayu14@gmail.com",
+  "admin@batarienergy.com",
+];
+
+const checkIsAdmin = (req) => {
+  const role = (req.user?.role || "").toLowerCase();
+  const email = (req.user?.email || "").toLowerCase();
+  return (
+    role === "admin" ||
+    role === "superadmin" ||
+    role === "super_admin" ||
+    SUPER_ADMIN_EMAILS.includes(email)
+  );
+};
+
 //===== (addDeviceToPlant) ======
 const addDeviceToPlant = async (req, res) => {
   try {
@@ -26,9 +43,10 @@ const addDeviceToPlant = async (req, res) => {
 
     const deviceId = req.body.deviceId || req.body.device_id;
     const plantId = req.body.plant_id || req.body.plantId || req.params.id;
-    const userId = req.user.userId;
+    const userId = req.user?.userId || req.user?.id;
+    const isAdmin = checkIsAdmin(req);
 
-    const allowed = await canManagePlant(userId, plantId);
+    const allowed = isAdmin || (await canManagePlant(userId, plantId));
     if (!allowed) {
       return res.status(403).json({ message: "Access denied" });
     }
@@ -48,9 +66,10 @@ const addDeviceToPlant = async (req, res) => {
 const getPlantDeviceData = async (req, res) => {
   try {
     const plantId = req.params.id;
-    const userId = req.user.userId;
+    const userId = req.user?.userId || req.user?.id;
+    const isAdmin = checkIsAdmin(req);
 
-    const allowed = await canViewPlant(userId, plantId);
+    const allowed = isAdmin || (await canViewPlant(userId, plantId));
     if (!allowed) {
       return res.status(403).json({ message: "Access denied" });
     }
@@ -74,7 +93,8 @@ const removeDeviceFromPlant = async (req, res) => {
   try {
     const plantId = req.params.id;
     const deviceId = req.params.deviceId;
-    const userId = req.user.userId;
+    const userId = req.user?.userId || req.user?.id;
+    const isAdmin = checkIsAdmin(req);
 
     if (!plantId) {
       return res.status(400).json({ message: "plant_id is required" });
@@ -84,7 +104,7 @@ const removeDeviceFromPlant = async (req, res) => {
       return res.status(400).json({ message: "deviceId is required" });
     }
 
-    const allowed = await canManagePlant(userId, plantId);
+    const allowed = isAdmin || (await canManagePlant(userId, plantId));
     if (!allowed) {
       return res.status(403).json({ message: "Access denied" });
     }

@@ -278,7 +278,17 @@ router.get("/stations/:stationId", auth, async (req, res) => {
       62566374: 62435287,
       62566375: 62433430,
     };
-    const stationId = ID_ALIASES[Number(req.params.stationId)] || Number(req.params.stationId);
+    let resolvedStationId = ID_ALIASES[Number(req.params.stationId)] || Number(req.params.stationId);
+    try {
+      const db = require("../config/db");
+      const integration = await db("deye_integrations")
+        .where("plant_id", String(resolvedStationId))
+        .first();
+      if (integration?.station_id) {
+        resolvedStationId = Number(integration.station_id);
+      }
+    } catch (_) {}
+    const stationId = resolvedStationId;
 
     // Fast memory cache check (30s TTL)
     const nowMs = Date.now();
