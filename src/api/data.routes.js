@@ -25,29 +25,51 @@ let allStationsEnergyCache = { timestamp: 0, map: new Map() };
 
 async function getLiveStationEnergyMap(stationIds = []) {
   const now = Date.now();
-  // 2 minutes in-memory cache for ultra-fast response times & zero rate-limit issues
-  if (allStationsEnergyCache.map.size > 0 && now - allStationsEnergyCache.timestamp < 120000) {
+  // 3 minutes in-memory cache for ultra-fast response times & zero rate-limit issues
+  if (allStationsEnergyCache.map.size > 0 && now - allStationsEnergyCache.timestamp < 180000) {
     return allStationsEnergyCache.map;
   }
 
   try {
     const deyeClient = require("../integrations/deye/deye.client");
-    let allDevices = [];
     const chunkSize = 8;
+    const stationChunks = [];
     for (let i = 0; i < stationIds.length; i += chunkSize) {
-      const chunk = stationIds.slice(i, i + chunkSize);
-      const res = await deyeClient.post("/v1.0/station/device", { stationIds: chunk });
-      if (Array.isArray(res?.deviceListItems)) allDevices.push(...res.deviceListItems);
+      stationChunks.push(stationIds.slice(i, i + chunkSize));
+    }
+
+    const deviceResponses = await Promise.all(
+      stationChunks.map(chunk =>
+        deyeClient.post("/v1.0/station/device", { stationIds: chunk }).catch(() => null)
+      )
+    );
+
+    let allDevices = [];
+    for (const res of deviceResponses) {
+      if (Array.isArray(res?.deviceListItems)) {
+        allDevices.push(...res.deviceListItems);
+      }
     }
 
     const inverters = allDevices.filter(d => d.deviceType === "INVERTER");
     const inverterSns = inverters.map(d => d.deviceSn);
 
-    let allDeviceData = [];
+    const invChunks = [];
     for (let i = 0; i < inverterSns.length; i += 10) {
-      const chunk = inverterSns.slice(i, i + 10);
-      const res = await deyeClient.post("/v1.0/device/latest", { deviceList: chunk });
-      if (Array.isArray(res?.deviceDataList)) allDeviceData.push(...res.deviceDataList);
+      invChunks.push(inverterSns.slice(i, i + 10));
+    }
+
+    const dataResponses = await Promise.all(
+      invChunks.map(chunk =>
+        deyeClient.post("/v1.0/device/latest", { deviceList: chunk }).catch(() => null)
+      )
+    );
+
+    let allDeviceData = [];
+    for (const res of dataResponses) {
+      if (Array.isArray(res?.deviceDataList)) {
+        allDeviceData.push(...res.deviceDataList);
+      }
     }
 
     const map = new Map();
@@ -171,6 +193,10 @@ router.get("/stations", auth, async (req, res) => {
 
     res.json({ success: true, status: "success", data: stations, total: stations.length });
   } catch (err) {
+    const cachedDetail = stationDetailCache.get(Number(req.params.stationId));
+    if (cachedDetail?.data) {
+      return res.json({ success: true, status: "success", data: cachedDetail.data });
+    }
     res.status(500).json({ success: false, message: err.message });
   }
 });
@@ -294,10 +320,10 @@ router.get("/stations/:stationId", auth, async (req, res) => {
     } catch (_) {}
     const stationId = resolvedStationId;
 
-    // Fast memory cache check (30s TTL)
+    // Fast memory cache check (60s TTL - avoids frequent remote round trips)
     const nowMs = Date.now();
     const cachedDetail = stationDetailCache.get(stationId);
-    if (cachedDetail && nowMs - cachedDetail.timestamp < 30000) {
+    if (cachedDetail && nowMs - cachedDetail.timestamp < 60000) {
       return res.json({
         success: true,
         status: "success",
@@ -305,11 +331,12 @@ router.get("/stations/:stationId", auth, async (req, res) => {
       });
     }
 
-    // Execute remote requests in parallel for maximum speed
-    const [stationsListResult, latestResult, energySummaryResult] = await Promise.allSettled([
+    // Execute all remote requests in parallel for maximum speed (zero waterfall)
+    const [stationsListResult, latestResult, energySummaryResult, parallelInvertersResult] = await Promise.allSettled([
       getCachedStationList(),
       deyeService.getStationLatest(stationId),
       getStationTodayEnergySummary(stationId),
+      Number(stationId) >= 1000000 ? fetchDeyeStationDevicesWithLatest(stationId) : Promise.resolve([]),
     ]);
 
     const allStations = stationsListResult.status === 'fulfilled' ? stationsListResult.value : [];
@@ -370,17 +397,21 @@ router.get("/stations/:stationId", auth, async (req, res) => {
     }
 
     let devices = [];
-    if (stationMeta || Number(stationId) >= 1000000) {
-      const deyeInverters = await fetchDeyeStationDevicesWithLatest(
-        stationId,
-        stationMeta,
-        lastUpdateIso,
-        pv,
-        energySummary
-      );
-      if (deyeInverters.length > 0) {
-        devices = deyeInverters;
-      }
+    if (parallelInvertersResult.status === 'fulfilled' && Array.isArray(parallelInvertersResult.value) && parallelInvertersResult.value.length > 0) {
+      devices = parallelInvertersResult.value;
+    } else if (stationMeta || Number(stationId) >= 1000000) {
+      try {
+        const deyeInverters = await fetchDeyeStationDevicesWithLatest(
+          stationId,
+          stationMeta,
+          lastUpdateIso,
+          pv,
+          energySummary
+        );
+        if (deyeInverters.length > 0) {
+          devices = deyeInverters;
+        }
+      } catch (_) {}
     }
 
     if (devices.length === 0 && Array.isArray(dbDevices) && dbDevices.length > 0) {

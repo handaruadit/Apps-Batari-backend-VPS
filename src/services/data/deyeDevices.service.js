@@ -1,6 +1,23 @@
 const deyeService = require("../../integrations/deye/deye.service");
 const deyeClient = require("../../integrations/deye/deye.client");
 
+// In-memory hardware devices cache (5 minutes TTL - physical inverter topology rarely changes)
+const stationDevicesListCache = new Map();
+
+async function getCachedStationDevices(stationId) {
+  const now = Date.now();
+  const numId = Number(stationId);
+  const cached = stationDevicesListCache.get(numId);
+  if (cached && now - cached.timestamp < 300000 && Array.isArray(cached.devList) && cached.devList.length > 0) {
+    return cached.devList;
+  }
+  const devList = await deyeService.getStationDevices(stationId);
+  if (Array.isArray(devList) && devList.length > 0) {
+    stationDevicesListCache.set(numId, { timestamp: now, devList });
+  }
+  return devList || [];
+}
+
 async function fetchDeyeStationDevicesWithLatest(
   stationId,
   stationMeta,
@@ -9,7 +26,7 @@ async function fetchDeyeStationDevicesWithLatest(
   energySummaryTotal,
 ) {
   try {
-    const devList = await deyeService.getStationDevices(stationId);
+    const devList = await getCachedStationDevices(stationId);
     if (!Array.isArray(devList) || devList.length === 0) {
       return [];
     }
