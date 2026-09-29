@@ -222,7 +222,8 @@ async function getStationTodayEnergySummary(stationId) {
       histRes.stationDataItems.forEach(pt => {
         const pPv = (pt.generationPower || 0) / 1000;
         const pLoad = (pt.consumptionPower || 0) / 1000;
-        const pGrid = (pt.wirePower ?? 0) / 1000;
+        const rawGrid = pt.wirePower != null ? pt.wirePower : (pt.gridPower != null ? pt.gridPower : (pt.purchasePower != null ? pt.purchasePower : 0));
+        const pGrid = Number(rawGrid || 0) / 1000;
         const pBatt = (pt.batteryPower || 0) / 1000;
 
         pvTodayKwh += pPv * intervalHours;
@@ -318,7 +319,8 @@ router.get("/stations/:stationId", auth, async (req, res) => {
 
     const pv = latest ? Number(((latest.generationPower || 0) / 1000).toFixed(2)) : 0;
     const load = latest ? Number(((latest.consumptionPower || 0) / 1000).toFixed(2)) : 0;
-    const grid = latest ? Number(((latest.wirePower ?? 0) / 1000).toFixed(2)) : 0;
+    const rawGrid = latest ? (latest.wirePower != null ? latest.wirePower : (latest.gridPower != null ? latest.gridPower : (latest.purchasePower != null ? latest.purchasePower : 0))) : 0;
+    const grid = Number((Number(rawGrid || 0) / 1000).toFixed(2));
     const battery = latest ? Number(((latest.batteryPower || 0) / 1000).toFixed(2)) : 0;
     const soc = latest && latest.batterySOC != null ? Number(Number(latest.batterySOC).toFixed(1)) : 0;
     const lastUpdateIso = latest?.lastUpdateTime

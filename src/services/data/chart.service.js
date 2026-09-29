@@ -106,9 +106,9 @@ const getChartData = async ({ plantId, deviceIds, segment, date }) => {
   }
   if (!Number.isFinite(stationId) || stationId < 100000) {
     const firstDevice = Array.isArray(deviceIds) ? (typeof deviceIds[0] === "object" ? deviceIds[0].device_id : deviceIds[0]) : "";
-    const match = String(firstDevice).match(/\d{7,10}/);
-    if (match) {
-      stationId = ID_ALIASES[Number(match[0])] || Number(match[0]);
+    const deyeStationMatch = String(firstDevice).match(/^DEYE_STATION_(\d+)/i);
+    if (deyeStationMatch) {
+      stationId = ID_ALIASES[Number(deyeStationMatch[1])] || Number(deyeStationMatch[1]);
     }
   }
 
@@ -144,7 +144,8 @@ const getChartData = async ({ plantId, deviceIds, segment, date }) => {
           const iso = new Date(item.timeStamp * 1000).toISOString();
           const pvKw = Number(((item.generationPower || 0) / 1000).toFixed(2));
           const loadKw = Number(((item.consumptionPower || 0) / 1000).toFixed(2));
-          const gridKw = Number(((item.wirePower ?? 0) / 1000).toFixed(2));
+          const rawGrid = item.wirePower != null ? item.wirePower : (item.gridPower != null ? item.gridPower : (item.purchasePower != null ? item.purchasePower : 0));
+          const gridKw = Number((Number(rawGrid || 0) / 1000).toFixed(2));
           const battKw = Number(((item.batteryPower || 0) / 1000).toFixed(2));
           const socVal = Number(Number(item.batterySOC ?? 0).toFixed(1));
 
@@ -152,7 +153,7 @@ const getChartData = async ({ plantId, deviceIds, segment, date }) => {
           load.push({ id: idx, value: loadKw, created_at: iso, timestamp: item.timeStamp * 1000 });
           grid.push({ id: idx, value: gridKw, created_at: iso, timestamp: item.timeStamp * 1000 });
           battery.push({ id: idx, value: battKw, created_at: iso, timestamp: item.timeStamp * 1000 });
-          pvGenerate.push({ id: idx, value: pvKw, created_at: iso, timestamp: item.timeStamp * 1000 });
+          pvGenerate.push({ id: idx, value: loadKw, created_at: iso, timestamp: item.timeStamp * 1000 });
           soc.push({ id: idx, value: socVal, created_at: iso, timestamp: item.timeStamp * 1000 });
         });
 
@@ -160,7 +161,7 @@ const getChartData = async ({ plantId, deviceIds, segment, date }) => {
           production,
           load,
           upsLoad: load,
-          grid: [],
+          grid,
           battery,
           soc,
           pvGenerate,
