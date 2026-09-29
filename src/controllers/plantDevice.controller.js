@@ -74,8 +74,45 @@ const getPlantDeviceData = async (req, res) => {
       return res.status(403).json({ message: "Access denied" });
     }
 
-    const devices = await getPlantDevices(plantId);
+    let devices = await getPlantDevices(plantId);
     const plant = await getPlantById(plantId);
+
+    // If no physical inverters returned from plant_devices table, check Deye integration
+    const hasInverters = Array.isArray(devices) && devices.some((d) => d.deviceType === "INVERTER" || d.type === "INVERTER");
+    if (!hasInverters) {
+      let targetStationId = plant?.deye_station_id || (Number(plantId) >= 100000 ? plantId : null);
+      if (!targetStationId) {
+        try {
+          const db = require("../config/db");
+          const integration = await db("deye_integrations")
+            .where("plant_id", String(plantId))
+            .orWhere("station_id", String(plantId))
+            .first("plant_id", "station_id");
+          if (integration?.station_id) {
+            targetStationId = integration.station_id;
+          }
+        } catch (_intErr) {}
+      }
+
+      if (targetStationId) {
+        try {
+          const { fetchDeyeStationDevicesWithLatest } = require("../services/data/deyeDevices.service");
+          const deyeInverters = await fetchDeyeStationDevicesWithLatest(
+            targetStationId,
+            plant,
+            plant?.updated_at || new Date().toISOString(),
+            0,
+            null,
+          );
+          if (Array.isArray(deyeInverters) && deyeInverters.length > 0) {
+            devices = deyeInverters;
+          }
+        } catch (_deyeErr) {
+          console.warn("[plantDevice.controller] Deye inverters fetch fallback:", _deyeErr.message);
+        }
+      }
+    }
+
     res.json({
       status: "success",
       data: {
