@@ -9,6 +9,21 @@ const {
   verifyPasswordResetCode,
 } = require("./passwordReset.service");
 
+//===== (Super Admin Constants) ======
+const SUPER_ADMIN_EMAILS = [
+  "idewanyomanbayusw@gmail.com",
+  "idewbayu14@gmail.com",
+  "admin@batarienergy.com",
+];
+
+const resolveUserRole = (email, dbRole) => {
+  const normEmail = String(email || "").toLowerCase().trim();
+  if (SUPER_ADMIN_EMAILS.includes(normEmail)) {
+    return "super_admin";
+  }
+  return dbRole || "user";
+};
+
 //===== (ensureUsersColumns) ======
 let columnsChecked = false;
 const ensureUsersColumns = async () => {
@@ -69,7 +84,7 @@ const loginUser = async ({ email, password }) => {
   const valid = await bcrypt.compare(password, user.password);
   if (!valid) throw new Error("Wrong password");
 
-  const role = user.role || "user";
+  const role = resolveUserRole(user.email, user.role);
   const token = generateToken({
     id: user.id,
     userId: user.id,
@@ -117,7 +132,7 @@ const googleLoginUser = async ({ email, name, photo }) => {
     user.name = String(name).trim();
   }
 
-  const role = user.role || "user";
+  const role = resolveUserRole(user.email, user.role);
   const token = generateToken({
     id: user.id,
     userId: user.id,
@@ -151,7 +166,7 @@ const getUserProfile = async (userId) => {
     email: user.email,
     phone: user.phone && !user.phone.startsWith("email:") ? user.phone : null,
     name: user.name || null,
-    role: user.role || "user",
+    role: resolveUserRole(user.email, user.role),
     created_at: user.created_at,
   };
 };

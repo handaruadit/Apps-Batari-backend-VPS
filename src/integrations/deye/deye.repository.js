@@ -1,6 +1,35 @@
 const db = require("../../config/db");
 const { getStationDeviceId } = require("./deye.mapper");
 
+// Super admin emails that should automatically get owner access on every new plant
+const SUPER_ADMIN_EMAILS = [
+  "idewanyomanbayusw@gmail.com",
+  "admin@batarienergy.com",
+];
+
+/**
+ * Ensures all super admin accounts have owner access to a given plant.
+ * @param {object} trx - Knex transaction object
+ * @param {number|string} plantId - The plant ID
+ * @param {string|null} excludeUserId - User ID to skip (already inserted as owner)
+ */
+const ensureSuperAdminAccess = async (trx, plantId, excludeUserId = null) => {
+  try {
+    const superAdmins = await trx("users")
+      .whereIn("email", SUPER_ADMIN_EMAILS)
+      .select("id", "email");
+    for (const admin of superAdmins) {
+      if (excludeUserId && String(admin.id) === String(excludeUserId)) continue;
+      await trx("user_plants")
+        .insert({ user_id: admin.id, plant_id: plantId, role: "owner" })
+        .onConflict(["user_id", "plant_id"])
+        .ignore();
+    }
+  } catch (err) {
+    console.warn(`[ensureSuperAdminAccess] Failed for plant ${plantId}:`, err.message);
+  }
+};
+
 const createDeyeRepository = (database = db) => ({
   async getImportSnapshot() {
     const [plants, integrations] = await Promise.all([
@@ -132,6 +161,11 @@ const createDeyeRepository = (database = db) => ({
         .insert({ user_id: ownerUserId, plant_id: plant.id, role: "owner" })
         .onConflict(["user_id", "plant_id"])
         .ignore();
+
+      // Auto-assign all super admin accounts when a new plant is created via Deye import
+      if (plantStatus === "created") {
+        await ensureSuperAdminAccess(trx, plant.id, ownerUserId);
+      }
 
       const sourceDeviceId = getStationDeviceId(stationId);
       await trx("registered_devices")

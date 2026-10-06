@@ -54,3 +54,39 @@
   - Modifikasi kode harus dibatasi secara ketat HANYA pada bagian yang diminta atau dibutuhkan langsung untuk menyelesaikan masalah spesifik yang diadukan pengguna.
   - Jika agent menemukan potensi optimasi atau ide perbaikan di luar lingkup yang diminta, agent WAJIB menanyakannya atau memberikan rekomendasi secara tertulis terlebih dahulu, BUKAN langsung mengubah kode tanpa persetujuan eksplisit dari pengguna.
 
+## 7. Prinsip Integrasi Multi-Brand & Standar Baku BySense (The Canonical Standard)
+- **BySense Sebagai Standar Utama Tunggal (*The Single Canonical Model*)**:
+  - Seluruh integrasi perangkat, baik yang sudah berjalan (**Deye Cloud**) maupun yang akan ditambahkan ke depan (**DessMonitor / SmartESS / Eybond / ShineMonitor** atau penyedia inverter lain):
+    - **WAJIB TUNDUK DAN MENYESUAIKAN 100% PADA FORMAT & STANDAR BAKU BYSENSE**.
+    - **DILARANG MENGUBAH, MERUBAH TAMPILAN, ATAU MENAMBAHKAN ELEMEN BARU DI FRONTEND HANYA KARENA FORMAT VENDOR PIHAK KETIGA BERBEDA**.
+    - Bukan BySense yang mengikuti Deye atau SmartESS, melainkan **Deye dan SmartESS yang wajib dinormalisasi mengikuti BySense**.
+- **Penerapan Adapter Pattern di Backend**:
+  - Modul integrasi vendor baru (seperti `src/integrations/dessmonitor`) hanya bertindak sebagai adapter di lapisan backend.
+  - Adapter bertugas menerjemahkan *payload* mentah vendor pihak ketiga menjadi entitas resmi BySense:
+    - Status baku: `Online` (Hijau), `Incomplete` (Amber), `Offline` (Merah, daya 0 kW), `Alerts` (Oranye).
+    - Metrik daya: `pvKw` (kW), `dailyYield` (kWh), `totalYield` (kWh), `batteryPower` (W), `batterySoc` (%), `gridPower` (W), `loadPower` (W).
+    - Format kurva diurnal: Array titik 24 jam `{ hour, value }` yang disajikan melalui endpoint seragam `/api/data/chart?plantId=...`.
+- **Integritas Pengalaman Pengguna (Zero Frontend Disruption)**:
+  - Antarmuka Frontend (Web dan Mobile), struktur kartu stasiun, grafik MiniSparkline, kurva Dual-Axis, peta geografis, hingga detail inverter di kartu kubus tetap berjalan identik dan seragam untuk semua stasiun tanpa peduli merk inverter fisiknya.
+- **Validasi Kelengkapan Parameter SmartESS / DessMonitor (100% Coverage Verified)**:
+  - Seluruh parameter yang dibutuhkan oleh ekosistem BySense telah diverifikasi **TERSEDIA LENGKAP 100%** di API SmartESS / DessMonitor (`webQueryDeviceEs` & `queryDeviceLastData`):
+    1. **Metrik Utama Pembangkit**:
+       - `pvKw` / `production` (kW) $\leftarrow$ SmartESS `outpower` (kW) / `solar_power` (W / 1000)
+       - `dailyYield` / `dailyEnergy` (kWh) $\leftarrow$ SmartESS `energyToday` (kWh)
+       - `totalYield` / `totalEnergy` (kWh) $\leftarrow$ SmartESS `energyTotal` (kWh)
+       - `status` (`Online` / `Offline`) $\leftarrow$ SmartESS `status` (1 = Online, 0 = Offline dengan daya mutlak 0 kW)
+    2. **Parameter Baterai & BMS (Kartu Kubus Perangkat)**:
+       - `batteryVoltage` (V) $\leftarrow$ SmartESS `battery_voltage` (V)
+       - `batteryCurrent` (A) $\leftarrow$ SmartESS `battery_current` (A)
+       - `batteryPower` (kW) $\leftarrow$ SmartESS `battery_power` (W / 1000)
+       - `batterySoc` (%) $\leftarrow$ SmartESS `battery_soc` (%)
+    3. **Aliran Energi & Donut Chart (*Energy Flow*)**:
+       - Solar Generation $\leftarrow$ SmartESS `solar_power` (kW)
+       - Konsumsi Beban (*Load*) $\leftarrow$ SmartESS `output_power` / `load_power` (kW)
+       - Jaringan Listrik (*Grid*) $\leftarrow$ SmartESS `grid_power` (kW)
+       - Baterai $\leftarrow$ SmartESS `battery_power` (kW) & `battery_soc` (%)
+    4. **Kurva Historis 24 Jam**:
+       - Titik telemetri periodik SmartESS disimpan dan diagregasi oleh backend ke array 24 jam `{ hour, value }` pada endpoint seragam `/api/data/chart?plantId=...`.
+
+
+

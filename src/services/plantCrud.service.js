@@ -12,6 +12,40 @@ const isValidUuid = (str) =>
     String(str || "")
   );
 
+// Super admin emails that should automatically get owner access on every new plant
+const SUPER_ADMIN_EMAILS = [
+  "idewanyomanbayusw@gmail.com",
+  "admin@batarienergy.com",
+];
+
+/**
+ * Ensures all super admin accounts have owner access to a given plant.
+ * Uses onConflict to safely skip if already assigned.
+ * @param {object} trx - Knex transaction object
+ * @param {number|string} plantId - The plant ID
+ * @param {string|null} excludeUserId - User ID to skip (already inserted as owner)
+ */
+const ensureSuperAdminAccess = async (trx, plantId, excludeUserId = null) => {
+  try {
+    const superAdmins = await trx("users")
+      .whereIn("email", SUPER_ADMIN_EMAILS)
+      .select("id", "email");
+
+    for (const admin of superAdmins) {
+      // Skip the user who already got owner access from the caller
+      if (excludeUserId && String(admin.id) === String(excludeUserId)) continue;
+
+      await trx("user_plants")
+        .insert({ user_id: admin.id, plant_id: plantId, role: "owner" })
+        .onConflict(["user_id", "plant_id"])
+        .ignore();
+    }
+  } catch (err) {
+    // Non-critical: log but don't block plant creation
+    console.warn(`[ensureSuperAdminAccess] Failed to auto-assign super admins to plant ${plantId}:`, err.message);
+  }
+};
+
 let lastDeyeSyncCheck = 0;
 const DEYE_SYNC_CHECK_INTERVAL_MS = 60 * 1000; // Check at most once every minute
 
@@ -229,6 +263,9 @@ const create = async (data, userId) => {
       plant_id: plant.id,
       role: "owner",
     });
+
+    // Auto-assign all super admin accounts as owner of the new plant
+    await ensureSuperAdminAccess(trx, plant.id, userId);
 
     return [plant];
   });
