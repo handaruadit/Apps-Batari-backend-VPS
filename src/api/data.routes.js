@@ -79,8 +79,20 @@ async function getLiveStationEnergyMap(stationIds = []) {
       const stId = Number(inv.stationId);
       if (!map.has(stId)) map.set(stId, { daily: 0, total: 0 });
       const cur = map.get(stId);
-      const daily = Number(d.dataList?.find(k => k.key === "DailyActiveProduction")?.value || 0);
-      const total = Number(d.dataList?.find(k => k.key === "TotalActiveProduction")?.value || 0);
+      const daily = Number(
+        d.dataList?.find(k =>
+          k.key === "DailyActiveProduction" ||
+          k.key === "dailyProductionActive" ||
+          k.key === "PVDailyPowerGenerationActive"
+        )?.value || 0
+      );
+      const total = Number(
+        d.dataList?.find(k =>
+          k.key === "TotalActiveProduction" ||
+          k.key === "cumulativeProductionActive" ||
+          k.key === "TotalEnergySell"
+        )?.value || 0
+      );
       cur.daily = Number((cur.daily + daily).toFixed(2));
       cur.total = Number((cur.total + total).toFixed(2));
     });
