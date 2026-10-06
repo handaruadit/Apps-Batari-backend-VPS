@@ -218,6 +218,22 @@ const createDeyeService = ({
       telemetry,
     });
 
+    // Notify users via push notification if station status transitioned
+    try {
+      const isOffline = raw.connectionStatus === "ALL_OFFLINE" || raw.connectStatus === 0 || raw.connectStatus === 3;
+      const isOnline = !isOffline && (raw.connectStatus === 1 || raw.connectionStatus === "NORMAL");
+      if (integration.plant_id && (isOffline || isOnline)) {
+        const pushNotificationService = require("../../services/pushNotification.service");
+        pushNotificationService.notifyPlantStatusChange({
+          plantId: integration.plant_id,
+          plantName: raw.stationName || `Station #${stationId}`,
+          isOnline,
+        }).catch((err) => logger.warn(`[push] status alert failed: ${err.message}`));
+      }
+    } catch {
+      // Non-fatal
+    }
+
     return { stationId: Number(stationId), sourceTimestamp, telemetry, ...saved };
   },
 

@@ -60,6 +60,12 @@ const auditAndSyncDeyePlants = async () => {
       const plantExists = linkedPlantId && plantIdSet.has(linkedPlantId);
 
       if (plantExists) {
+        // Pastikan enabled = true jika sebelumnya pernah dinonaktifkan
+        await db("deye_integrations")
+          .where({ station_id: stationId })
+          .update({ enabled: true, updated_at: db.fn.now() })
+          .catch(() => {});
+
         // Pastikan kedua Super Admin tercatat sebagai Owner di tabel user_plants
         for (const sa of superAdmins) {
           await db("user_plants")
@@ -159,11 +165,34 @@ const auditAndSyncDeyePlants = async () => {
       console.log(`[Plant Audit] ✅ Sukses sinkronisasi #${stationId} (${stationName}) -> plant_id=${finalPlantId}`);
     }
 
-    console.log(`[Plant Audit] 🏁 Audit selesai: Total ${rawStations.length} stasiun Deye | ${verifiedCount} terverifikasi | ${newlySyncedCount} baru disinkronkan.`);
+    // 3. Rekonsiliasi Stasiun Deye yang dihapus/dicabut dari Deye Cloud (Soft Deactivation - Opsi B)
+    // Syarat ketat: Hanya rekonsiliasi jika API Deye terbukti sukses mengembalikan stasiun valid (> 0)
+    const liveStationIdSet = new Set(
+      rawStations
+        .map((st) => Number(st.stationId || st.id))
+        .filter((id) => id && id >= 1000000)
+    );
+
+    let deactivatedCount = 0;
+    for (const item of existingIntegrations) {
+      const sId = Number(item.station_id);
+      if (sId && !liveStationIdSet.has(sId)) {
+        console.log(`[Plant Audit] ⏸️ Stasiun #${sId} (plant_id=${item.plant_id}) tidak ditemukan di Deye Cloud API. Menandai enabled=false (Soft Deactivation)...`);
+        await db("deye_integrations")
+          .where({ station_id: sId })
+          .update({ enabled: false, updated_at: db.fn.now() })
+          .catch(() => {});
+        deactivatedCount += 1;
+        auditDetails.push({ stationId: sId, plantId: item.plant_id, status: "soft_deactivated" });
+      }
+    }
+
+    console.log(`[Plant Audit] 🏁 Audit selesai: Total ${rawStations.length} stasiun Deye | ${verifiedCount} terverifikasi | ${newlySyncedCount} baru | ${deactivatedCount} dinonaktifkan.`);
     return {
       totalDeye: rawStations.length,
       verifiedExisting: verifiedCount,
       newlySynced: newlySyncedCount,
+      deactivated: deactivatedCount,
       details: auditDetails,
     };
   } catch (err) {

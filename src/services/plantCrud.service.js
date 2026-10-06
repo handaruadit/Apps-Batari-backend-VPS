@@ -121,6 +121,7 @@ const getPlants = async (userId, isAdmin = false) => {
     SELECT
       p.*,
       di.station_id as deye_station_id,
+      di.enabled as deye_enabled,
       COALESCE(up.role, 'owner') as role,
       (
         SELECT MAX(sub.ts)
@@ -150,12 +151,14 @@ const getPlants = async (userId, isAdmin = false) => {
     FROM plants p
     LEFT JOIN deye_integrations di ON di.plant_id = p.id
     LEFT JOIN user_plants up ON p.id = up.plant_id AND up.user_id = ?::uuid
+    WHERE (di.enabled IS NULL OR di.enabled = true)
     ORDER BY p.id ASC
     `
     : `
     SELECT
       p.*,
       di.station_id as deye_station_id,
+      di.enabled as deye_enabled,
       up.role,
       (
         SELECT MAX(sub.ts)
@@ -185,7 +188,7 @@ const getPlants = async (userId, isAdmin = false) => {
     FROM plants p
     LEFT JOIN deye_integrations di ON di.plant_id = p.id
     JOIN user_plants up ON p.id = up.plant_id
-    WHERE up.user_id = ?::uuid
+    WHERE up.user_id = ?::uuid AND (di.enabled IS NULL OR di.enabled = true)
     ORDER BY p.id ASC
     `;
 
@@ -200,6 +203,8 @@ const getPlants = async (userId, isAdmin = false) => {
 
     return {
       ...plant,
+      is_active: plant.deye_enabled !== false,
+      deye_enabled: plant.deye_enabled !== false,
       is_online: isOnline,
       connection_status: isOnline ? "Online" : "Offline",
       role: normalizeAccessRole(plant.role),

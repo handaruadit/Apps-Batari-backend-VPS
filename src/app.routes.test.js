@@ -24,6 +24,13 @@ jest.mock("./controllers/auth.controller", () => ({
   deleteAccount: createMockHandler("deleteAccount"),
 }));
 
+//===== (Mock Push Notification Controller) ======
+jest.mock("./controllers/pushNotification.controller", () => ({
+  savePushToken: createMockHandler("savePushToken"),
+  removePushToken: createMockHandler("removePushToken"),
+  testPushNotification: createMockHandler("testPushNotification"),
+}));
+
 //===== (Mock Data Controller) ======
 jest.mock("./controllers/data.controller", () => ({
   sendManualPlantData: createMockHandler("sendManualPlantData"),
