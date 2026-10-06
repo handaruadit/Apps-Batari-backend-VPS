@@ -88,5 +88,22 @@
     4. **Kurva Historis 24 Jam**:
        - Titik telemetri periodik SmartESS disimpan dan diagregasi oleh backend ke array 24 jam `{ hour, value }` pada endpoint seragam `/api/data/chart?plantId=...`.
 
+## 10. Standar & Alur Integrasi SmartESS / DessMonitor Cloud (Multi-Brand Auto-Sync)
+- **Skema Akun Induk & Hak Akses View-Only**:
+  - Akun sentral BySense (`idewanyomanbayusw@gmail.com`) bertindak sebagai akun induk penampung (*master collector account*) di DessMonitor (`www.dessmonitor.com`) / SmartESS.
+  - Seluruh pemilik pembangkit (*plant owner*) menambahkan atau membagikan izin stasiun (*share plant*) ke akun sentral ini dengan tingkat akses **View-Only** (hanya pemantauan), identik dengan arsitektur integrasi Deye Cloud.
+- **Siklus CRUD & Sinkronisasi Otomatis Terpadu**:
+  - **CREATE (Pembangkit Baru)**: Begitu stasiun baru dibagikan oleh owner di DessMonitor, siklus audit berkala backend BySense otomatis mendeteksi stasiun baru, menyimpannya ke tabel PostgreSQL `plants` di VPS (`apidb`), dan mengaitkan hak kepemilikan utama (*Primary Owner*) ke akun Super Admin (`idewanyomanbayusw@gmail.com` dan `admin@batarienergy.com`) di tabel `user_plants`.
+  - **READ (Telemetri Real-Time)**: Telemetri daya live (`pvKw`, `dailyYield`, `totalYield`, `batterySoc`, `gridPower`, `loadPower`) dan status (`Online`, `Incomplete`, `Offline` mutlak 0 kW, `Alerts`) ditarik berkala melalui DessMonitor REST API (`queryDeviceList`, `queryDeviceLastData`, `webQueryDeviceEs`) dengan autentikasi berbasis token dan hashing tanda tangan SHA-1 (`sign`).
+  - **UPDATE (Pembaruan Metadata)**: Modifikasi nama atau kapasitas pembangkit di DessMonitor otomatis terkalibrasi ke database PostgreSQL BySense.
+  - **DELETE / UNLINK (Stasiun Dicabut/Dihapus)**: Jika stasiun dicabut atau dihapus oleh owner, sistem otomatis menerapkan mekanisme *Soft Deactivation* (`enabled = false`), sehingga stasiun otomatis hilang dari tampilan web/mobile dengan aman tanpa merusak riwayat data historis.
+- **Arsitektur Modul Adapter Backend (`src/integrations/dessmonitor/`)**:
+  - `dessmonitor.client.js`: Autentikasi dan pembaruan token otomatis dengan DessMonitor API (`https://api.dessmonitor.com/public/`, action `authSource`, `company_key = bnrl_frRFjEz8Mkn`, SHA-1 signature hashing).
+  - `dessmonitor.service.js`: Pemanggilan `listStations()` dan `getDeviceLatest(deviceSn)`.
+  - `dessmonitor.mapper.js`: Normalisasi respons payload vendor ke standar baku BySense (The Canonical Standard).
+  - Jembatan audit di `plantAuditSync.service.js` menghubungkan data DessMonitor ke database PostgreSQL live `apidb` di VPS.
+- **Kondisi Lanjutan (Trigger Pengerjaan Integrasi)**:
+  - Implementasi teknis integrasi adapter DessMonitor akan langsung dieksekusi begitu pengguna mengonfirmasi bahwa seluruh stasiun dari akun owner telah selesai dibagikan (*view-only*) ke akun `idewanyomanbayusw@gmail.com`.
+
 
 
