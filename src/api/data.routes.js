@@ -164,6 +164,10 @@ router.get("/stations", auth, async (req, res) => {
               ? Number(Number(st.generationTotal).toFixed(2))
               : (st.totalEnergy != null ? Number(st.totalEnergy) : undefined));
 
+        const monthlyProd = st.generationMonth != null
+          ? Number(Number(st.generationMonth).toFixed(2))
+          : (st.monthlyEnergy != null ? Number(st.monthlyEnergy) : undefined);
+
         return {
           id,
           name: st.stationName || st.name,
@@ -180,6 +184,7 @@ router.get("/stations", auth, async (req, res) => {
           capacity,
           production,
           dailyProduction: dailyProd,
+          monthlyProduction: monthlyProd,
           accumulativeProduction: accProd,
           accumulativeConsumption: 0,
           gridConnection: st.gridInterconnectionType || "GRID_TIED",
