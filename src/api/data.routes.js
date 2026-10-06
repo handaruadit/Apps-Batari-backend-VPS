@@ -95,12 +95,23 @@ async function getLiveStationEnergyMap(stationIds = []) {
   }
 }
 
+let lastStationAuditTime = 0;
+const STATION_AUDIT_INTERVAL_MS = 15 * 60 * 1000;
+
 router.get("/stations", auth, async (req, res) => {
   try {
     const rawList = await deyeService.listStations();
     const stationIds = (rawList || [])
       .map(st => Number(st.stationId || st.id))
       .filter(id => id && id >= 1000000);
+
+    // Periodic background audit & sync for any newly added Deye stations
+    const now = Date.now();
+    if (now - lastStationAuditTime > STATION_AUDIT_INTERVAL_MS) {
+      lastStationAuditTime = now;
+      const { auditAndSyncDeyePlants } = require("../services/plantAuditSync.service");
+      auditAndSyncDeyePlants().catch(() => {});
+    }
 
     // Retrieve authentic real-time daily & accumulative energy from Deye Cloud inverters
     const liveEnergyMap = await getLiveStationEnergyMap(stationIds);
