@@ -47,10 +47,27 @@ const getRoleFlags = (role) => {
   };
 };
 
+//===== (resolvePlantId) ======
+const resolvePlantId = async (rawPlantId) => {
+  const numId = Number(rawPlantId);
+  if (!numId || isNaN(numId)) return rawPlantId;
+
+  const direct = await db("plants").where({ id: numId }).first("id");
+  if (direct) return direct.id;
+
+  if (numId >= 1000000) {
+    const integ = await db("deye_integrations").where({ station_id: numId }).first("plant_id");
+    if (integ?.plant_id) return integ.plant_id;
+  }
+
+  return rawPlantId;
+};
+
 //===== (checkPlantAccess) ======
 const checkPlantAccess = async (userId, plantId) => {
+  const resolvedId = await resolvePlantId(plantId);
   const data = await db("user_plants")
-    .where({ user_id: userId, plant_id: plantId })
+    .where({ user_id: userId, plant_id: resolvedId })
     .first();
 
   return !!data;
@@ -58,8 +75,9 @@ const checkPlantAccess = async (userId, plantId) => {
 
 //===== (getPlantAccessRole) ======
 const getPlantAccessRole = async (userId, plantId) => {
+  const resolvedId = await resolvePlantId(plantId);
   const access = await db("user_plants")
-    .where({ user_id: userId, plant_id: plantId })
+    .where({ user_id: userId, plant_id: resolvedId })
     .first("role");
 
   return access ? normalizeAccessRole(access.role) : null;
@@ -94,9 +112,10 @@ const assignUserToPlant = async (
     throw new Error("User not found");
   }
 
+  const resolvedPlantId = await resolvePlantId(plantId);
   const accessRole = normalizeAccessRole(role);
   const existing = await db("user_plants")
-    .where({ user_id: user.id, plant_id: plantId })
+    .where({ user_id: user.id, plant_id: resolvedPlantId })
     .first("id");
 
   if (existing) {
@@ -107,16 +126,17 @@ const assignUserToPlant = async (
 
   return await db("user_plants").insert({
     user_id: user.id,
-    plant_id: plantId,
+    plant_id: resolvedPlantId,
     role: accessRole,
   });
 };
 
 //===== (getPlantAccessList) ======
 const getPlantAccessList = async (plantId) => {
+  const resolvedPlantId = await resolvePlantId(plantId);
   const rows = await db("user_plants as up")
     .join("users as u", "u.id", "up.user_id")
-    .where("up.plant_id", plantId)
+    .where("up.plant_id", resolvedPlantId)
     .select(
       "u.id as userId",
       "u.email",
@@ -144,19 +164,23 @@ const searchRegisteredUsers = async ({ query, excludePlantId }) => {
     return [];
   }
 
+  const resolvedExcludePlantId = excludePlantId
+    ? await resolvePlantId(excludePlantId)
+    : null;
+
   const pattern = `%${text}%`;
   const rows = await db("users as u")
     .where((builder) => {
       builder.whereILike("u.email", pattern).orWhereILike("u.phone", pattern);
     })
     .modify((builder) => {
-      if (excludePlantId) {
+      if (resolvedExcludePlantId) {
         //===== (excludeExistingAccess) ======
         builder.whereNotExists(function excludeExistingAccess() {
           this.select("*")
             .from("user_plants as up")
             .whereRaw("up.user_id = u.id")
-            .where("up.plant_id", excludePlantId);
+            .where("up.plant_id", resolvedExcludePlantId);
         });
       }
     })
@@ -183,8 +207,10 @@ const addPlantAccess = async ({
     throw new Error("User_Not_Found");
   }
 
+  const resolvedPlantId = await resolvePlantId(plantId);
+
   const existing = await db("user_plants")
-    .where({ plant_id: plantId, user_id: userId })
+    .where({ plant_id: resolvedPlantId, user_id: userId })
     .first("id");
 
   if (existing) {
@@ -197,7 +223,7 @@ const addPlantAccess = async ({
 
   const [access] = await db("user_plants")
     .insert({
-      plant_id: plantId,
+      plant_id: resolvedPlantId,
       user_id: userId,
       role: accessRole,
     })
@@ -208,7 +234,8 @@ const addPlantAccess = async ({
 
 //===== (updatePlantAccess) ======
 const updatePlantAccess = async ({ plantId, userId, role }) => {
-  const currentRole = await getPlantAccessRole(userId, plantId);
+  const resolvedPlantId = await resolvePlantId(plantId);
+  const currentRole = await getPlantAccessRole(userId, resolvedPlantId);
 
   if (!currentRole) {
     throw new Error("Access_Not_Found");
@@ -224,7 +251,7 @@ const updatePlantAccess = async ({ plantId, userId, role }) => {
   }
 
   const [access] = await db("user_plants")
-    .where({ plant_id: plantId, user_id: userId })
+    .where({ plant_id: resolvedPlantId, user_id: userId })
     .update({ role: accessRole })
     .returning("*");
 
@@ -233,7 +260,8 @@ const updatePlantAccess = async ({ plantId, userId, role }) => {
 
 //===== (removePlantAccess) ======
 const removePlantAccess = async ({ plantId, userId }) => {
-  const currentRole = await getPlantAccessRole(userId, plantId);
+  const resolvedPlantId = await resolvePlantId(plantId);
+  const currentRole = await getPlantAccessRole(userId, resolvedPlantId);
 
   if (!currentRole) {
     throw new Error("Access_Not_Found");
@@ -243,7 +271,7 @@ const removePlantAccess = async ({ plantId, userId }) => {
     throw new Error("Cannot_Modify_Owner");
   }
 
-  return db("user_plants").where({ plant_id: plantId, user_id: userId }).del();
+  return db("user_plants").where({ plant_id: resolvedPlantId, user_id: userId }).del();
 };
 
 //===== (Exports) ======
