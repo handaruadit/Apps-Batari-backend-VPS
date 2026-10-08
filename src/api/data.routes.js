@@ -176,9 +176,12 @@ router.get("/stations", auth, async (req, res) => {
               ? Number(Number(st.generationTotal).toFixed(2))
               : (st.totalEnergy != null ? Number(st.totalEnergy) : undefined));
 
+        const dayOfMonth = new Date().getDate();
         const monthlyProd = st.generationMonth != null
           ? Number(Number(st.generationMonth).toFixed(2))
-          : (st.monthlyEnergy != null ? Number(st.monthlyEnergy) : undefined);
+          : (st.monthlyEnergy != null
+              ? Number(st.monthlyEnergy)
+              : (dailyProd > 0 ? Number((dailyProd * Math.max(1, dayOfMonth)).toFixed(2)) : undefined));
 
         return {
           id,
@@ -262,41 +265,86 @@ async function getStationTodayEnergySummary(stationId) {
   let gridExportTodayKwh = 0;
   let batteryChargeTodayKwh = 0;
   let batteryDischargeTodayKwh = 0;
+  let hasValidHardwareMeter = false;
 
+  // 1. Prioritize authentic Deye Cloud hardware energy registers from inverter telemetry
   try {
-    const deyeClient = require("../integrations/deye/deye.client");
-    const histRes = await deyeClient.post("/v1.0/station/history/power", {
-      stationId: Number(stationId),
-      startTimestamp: startOfDay,
-      endTimestamp: nowTs,
-    });
+    const { fetchDeyeStationDevicesWithLatest } = require("../services/data/deyeDevices.service");
+    const devs = await fetchDeyeStationDevicesWithLatest(stationId);
+    if (Array.isArray(devs) && devs.length > 0) {
+      let sumProd = 0;
+      let sumCons = 0;
+      let sumGridBuy = 0;
+      let sumGridSell = 0;
+      let sumCharge = 0;
+      let sumDischarge = 0;
 
-    if (Array.isArray(histRes?.stationDataItems) && histRes.stationDataItems.length > 0) {
-      const intervalHours = 5 / 60;
-      histRes.stationDataItems.forEach(pt => {
-        const pPv = (pt.generationPower || 0) / 1000;
-        const pLoad = (pt.consumptionPower || 0) / 1000;
-        const rawGrid = pt.wirePower != null ? pt.wirePower : (pt.gridPower != null ? pt.gridPower : (pt.purchasePower != null ? pt.purchasePower : 0));
-        const pGrid = Number(rawGrid || 0) / 1000;
-        const pBatt = (pt.batteryPower || 0) / 1000;
-
-        pvTodayKwh += pPv * intervalHours;
-        consumptionTodayKwh += pLoad * intervalHours;
-        if (pGrid > 0) gridImportTodayKwh += pGrid * intervalHours;
-        else if (pGrid < 0) gridExportTodayKwh += Math.abs(pGrid) * intervalHours;
-
-        if (pBatt < 0) batteryChargeTodayKwh += Math.abs(pBatt) * intervalHours;
-        else if (pBatt > 0) batteryDischargeTodayKwh += pBatt * intervalHours;
+      devs.forEach(d => {
+        if ((d.dailyEnergy != null && d.dailyEnergy > 0) || (d.dailyConsumption != null && d.dailyConsumption > 0) || (d.dailyEnergyPurchased != null && d.dailyEnergyPurchased > 0)) {
+          hasValidHardwareMeter = true;
+        }
+        sumProd += (d.dailyEnergy || 0);
+        sumCons += (d.dailyConsumption || 0);
+        sumGridBuy += (d.dailyEnergyPurchased || 0);
+        sumGridSell += (d.dailyGridFeedIn || 0);
+        sumCharge += (d.dailyChargingEnergy || 0);
+        sumDischarge += (d.dailyDischargingEnergy || 0);
       });
+
+      if (hasValidHardwareMeter) {
+        pvTodayKwh = sumProd;
+        consumptionTodayKwh = sumCons;
+        gridImportTodayKwh = sumGridBuy;
+        gridExportTodayKwh = sumGridSell;
+        batteryChargeTodayKwh = sumCharge;
+        batteryDischargeTodayKwh = sumDischarge;
+      }
     }
-  } catch (err) {
-    console.warn(`[data.routes] getStationTodayEnergySummary for ${stationId} error:`, err.message);
+  } catch (devErr) {
+    console.warn(`[data.routes] fetchDeyeStationDevicesWithLatest in energy summary error for ${stationId}:`, devErr.message);
   }
+
+  // 2. Safety fallback: 5-minute instantaneous power Riemann integration (only if hardware registers are completely absent)
+  if (!hasValidHardwareMeter) {
+    try {
+      const deyeClient = require("../integrations/deye/deye.client");
+      const histRes = await deyeClient.post("/v1.0/station/history/power", {
+        stationId: Number(stationId),
+        startTimestamp: startOfDay,
+        endTimestamp: nowTs,
+      });
+
+      if (Array.isArray(histRes?.stationDataItems) && histRes.stationDataItems.length > 0) {
+        const intervalHours = 5 / 60;
+        histRes.stationDataItems.forEach(pt => {
+          const pPv = (pt.generationPower || 0) / 1000;
+          const pLoad = (pt.consumptionPower || 0) / 1000;
+          const rawGrid = pt.wirePower != null ? pt.wirePower : (pt.gridPower != null ? pt.gridPower : (pt.purchasePower != null ? pt.purchasePower : 0));
+          const pGrid = Number(rawGrid || 0) / 1000;
+          const pBatt = (pt.batteryPower || 0) / 1000;
+
+          pvTodayKwh += pPv * intervalHours;
+          consumptionTodayKwh += pLoad * intervalHours;
+          if (pGrid > 0) gridImportTodayKwh += pGrid * intervalHours;
+          else if (pGrid < 0) gridExportTodayKwh += Math.abs(pGrid) * intervalHours;
+
+          if (pBatt < 0) batteryChargeTodayKwh += Math.abs(pBatt) * intervalHours;
+          else if (pBatt > 0) batteryDischargeTodayKwh += pBatt * intervalHours;
+        });
+      }
+    } catch (err) {
+      console.warn(`[data.routes] getStationTodayEnergySummary for ${stationId} error:`, err.message);
+    }
+  }
+
+  // Calculate direct solar self-consumption for load
+  const directPvKwh = Math.max(0, consumptionTodayKwh - gridImportTodayKwh - batteryDischargeTodayKwh);
 
   const summary = {
     consumptionTodayKwh: Number(consumptionTodayKwh.toFixed(2)),
     productionTodayKwh: Number(pvTodayKwh.toFixed(2)),
-    pvKwh: Number(pvTodayKwh.toFixed(2)),
+    pvKwh: Number(directPvKwh.toFixed(2)),
+    directPvKwh: Number(directPvKwh.toFixed(2)),
     gridKwh: Number(gridImportTodayKwh.toFixed(2)),
     exportKwh: Number(gridExportTodayKwh.toFixed(2)),
     batteryChargeKwh: Number(batteryChargeTodayKwh.toFixed(2)),
@@ -578,8 +626,10 @@ router.get("/stations/:stationId", auth, async (req, res) => {
         pvGenerate: load,
         dailyProduction: energySummary.productionTodayKwh,
         productionToday: energySummary.productionTodayKwh,
-        accumulativeProduction: 0,
-        accumulativeConsumption: 0,
+        accumulativeProduction: stationMeta?.generationTotal != null
+          ? Number(Number(stationMeta.generationTotal).toFixed(2))
+          : (devices.reduce((s, d) => s + (d.totalEnergy || 0), 0) || 0),
+        accumulativeConsumption: devices.reduce((s, d) => s + (d.totalConsumption || 0), 0) || 0,
         gridConnection,
         batteryCapacity: "10kWh",
         batterySoc: soc,

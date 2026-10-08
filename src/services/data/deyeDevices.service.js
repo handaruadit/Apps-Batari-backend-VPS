@@ -155,6 +155,32 @@ async function fetchDeyeStationDevicesWithLatest(
             ]);
       const consKw = Number((rawConsW / 1000).toFixed(2));
       const dailyConsKwh = getNum(["DailyConsumption"]);
+      const dailyEnergyPurchased = getNum([
+        "DailyEnergyPurchased",
+        "DailyEnergyPurchase",
+        "dailyEnergyPurchased",
+      ]);
+      const dailyGridFeedIn = getNum([
+        "DailyGridFeedIn",
+        "dailyGridFeedIn",
+        "DailyEnergySell",
+      ]);
+      const dailyChargingEnergy = getNum([
+        "DailyChargingEnergy",
+        "dailyChargingEnergy",
+      ]);
+      const dailyDischargingEnergy = getNum([
+        "DailyDischargingEnergy",
+        "dailyDischargingEnergy",
+      ]);
+      const totalConsKwh = getNum([
+        "TotalConsumption",
+        "totalConsumption",
+      ]);
+      const totalEnergyBuy = getNum(["TotalEnergyBuy"]);
+      const totalEnergySell = getNum(["TotalEnergySell"]);
+      const totalChargeEnergy = getNum(["TotalChargeEnergy"]);
+      const totalDischargeEnergy = getNum(["TotalDischargeEnergy"]);
 
       // Grid (Watts)
       const rawGridW = getNum([
@@ -263,6 +289,15 @@ async function fetchDeyeStationDevicesWithLatest(
         totalEnergy: Number(Number(totalProdKwh).toFixed(2)),
         consumptionPower: consKw,
         dailyConsumption: Number(Number(dailyConsKwh).toFixed(2)),
+        dailyEnergyPurchased: Number(Number(dailyEnergyPurchased).toFixed(2)),
+        dailyGridFeedIn: Number(Number(dailyGridFeedIn).toFixed(2)),
+        dailyChargingEnergy: Number(Number(dailyChargingEnergy).toFixed(2)),
+        dailyDischargingEnergy: Number(Number(dailyDischargingEnergy).toFixed(2)),
+        totalConsumption: Number(Number(totalConsKwh).toFixed(2)),
+        totalEnergyBuy: Number(Number(totalEnergyBuy).toFixed(2)),
+        totalEnergySell: Number(Number(totalEnergySell).toFixed(2)),
+        totalChargeEnergy: Number(Number(totalChargeEnergy).toFixed(2)),
+        totalDischargeEnergy: Number(Number(totalDischargeEnergy).toFixed(2)),
         gridPower: gridKw,
         batteryPower: Math.abs(battKw),
         batterySoc: battSoc,
