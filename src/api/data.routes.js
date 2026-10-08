@@ -687,6 +687,9 @@ router.get("/stations/:stationId", auth, async (req, res) => {
         pvGenerate: load,
         dailyProduction: energySummary.productionTodayKwh,
         productionToday: energySummary.productionTodayKwh,
+        monthlyProduction: stationMeta?.generationMonth != null
+          ? Number(Number(stationMeta.generationMonth).toFixed(2))
+          : (allStationsMonthlyCache?.map?.get(Number(stationId)) || 0),
         accumulativeProduction: stationMeta?.generationTotal != null
           ? Number(Number(stationMeta.generationTotal).toFixed(2))
           : (devices.reduce((s, d) => s + (d.totalEnergy || 0), 0) || 0),

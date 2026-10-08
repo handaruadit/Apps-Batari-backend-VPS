@@ -108,18 +108,27 @@ const getChartData = async ({ plantId, deviceIds, segment, date }) => {
           const dStr = `${yStr}-${mStr}-${String(day).padStart(2, "0")}`;
           const gen = Number(Number(it?.generationValue || 0).toFixed(2));
           const cons = Number(Number(it?.consumptionValue || 0).toFixed(2));
-          const grid = Number(Number(it?.gridValue || 0).toFixed(2));
+          const gridImport = Number(Number(it?.purchaseValue || 0).toFixed(2));
+          const gridExport = Number(Number(it?.gridValue || 0).toFixed(2));
           const charge = Number(Number(it?.chargeValue || 0).toFixed(2));
+          const discharge = Number(Number(it?.dischargeValue || 0).toFixed(2));
+          const pvSelfCons = Number(Math.max(0, gen - charge - gridExport).toFixed(2));
           return {
             day,
             label: String(day),
             date: dStr,
             pv: gen,
             production: gen,
-            load: cons,
-            grid,
-            battery: charge,
+            load: cons > 0 ? cons : Number((pvSelfCons + gridImport + discharge).toFixed(2)),
+            grid: gridImport,
+            export: gridExport,
+            battery: discharge,
+            charge,
+            discharge,
             pvGenerate: gen,
+            selfConsumption: pvSelfCons,
+            totalProduction: gen,
+            totalConsumption: cons > 0 ? cons : Number((pvSelfCons + gridImport + discharge).toFixed(2)),
           };
         });
 
@@ -173,17 +182,26 @@ const getChartData = async ({ plantId, deviceIds, segment, date }) => {
           const it = itemsByMonth.get(monthNum);
           const gen = Number(Number(it?.generationValue || 0).toFixed(2));
           const cons = Number(Number(it?.consumptionValue || 0).toFixed(2));
-          const grid = Number(Number(it?.gridValue || 0).toFixed(2));
+          const gridImport = Number(Number(it?.purchaseValue || 0).toFixed(2));
+          const gridExport = Number(Number(it?.gridValue || 0).toFixed(2));
           const charge = Number(Number(it?.chargeValue || 0).toFixed(2));
+          const discharge = Number(Number(it?.dischargeValue || 0).toFixed(2));
+          const pvSelfCons = Number(Math.max(0, gen - charge - gridExport).toFixed(2));
           return {
             month: monthNum,
             label: String(monthNum),
             pv: gen,
             production: gen,
-            load: cons,
-            grid,
-            battery: charge,
+            load: cons > 0 ? cons : Number((pvSelfCons + gridImport + discharge).toFixed(2)),
+            grid: gridImport,
+            export: gridExport,
+            battery: discharge,
+            charge,
+            discharge,
             pvGenerate: gen,
+            selfConsumption: pvSelfCons,
+            totalProduction: gen,
+            totalConsumption: cons > 0 ? cons : Number((pvSelfCons + gridImport + discharge).toFixed(2)),
           };
         });
 
@@ -228,17 +246,26 @@ const getChartData = async ({ plantId, deviceIds, segment, date }) => {
           .map(it => {
             const gen = Number(Number(it.generationValue || 0).toFixed(2));
             const cons = Number(Number(it.consumptionValue || 0).toFixed(2));
-            const grid = Number(Number(it.gridValue || 0).toFixed(2));
+            const gridImport = Number(Number(it.purchaseValue || 0).toFixed(2));
+            const gridExport = Number(Number(it.gridValue || 0).toFixed(2));
             const charge = Number(Number(it.chargeValue || 0).toFixed(2));
+            const discharge = Number(Number(it.dischargeValue || 0).toFixed(2));
+            const pvSelfCons = Number(Math.max(0, gen - charge - gridExport).toFixed(2));
             return {
               year: it.year,
               label: String(it.year),
               pv: gen,
               production: gen,
-              load: cons,
-              grid,
-              battery: charge,
+              load: cons > 0 ? cons : Number((pvSelfCons + gridImport + discharge).toFixed(2)),
+              grid: gridImport,
+              export: gridExport,
+              battery: discharge,
+              charge,
+              discharge,
               pvGenerate: gen,
+              selfConsumption: pvSelfCons,
+              totalProduction: gen,
+              totalConsumption: cons > 0 ? cons : Number((pvSelfCons + gridImport + discharge).toFixed(2)),
             };
           });
 
