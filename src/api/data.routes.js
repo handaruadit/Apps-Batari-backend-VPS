@@ -40,7 +40,7 @@ async function getLiveStationEnergyMap(stationIds = []) {
 
     const deviceResponses = await Promise.all(
       stationChunks.map(chunk =>
-        deyeClient.post("/v1.0/station/device", { stationIds: chunk }).catch(() => null)
+        deyeClient.post("/v1.0/station/device", { stationIds: chunk, page: 1, size: 50 }).catch(() => null)
       )
     );
 
