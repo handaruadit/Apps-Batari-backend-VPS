@@ -132,15 +132,18 @@ const getMonthlyChart = async (req, res) => {
     }
 
     const deviceIds = await getDeviceIdData(userId, plantId, role);
-    const data = await getMonthlyChartData({
+    const chartResult = await getChartData({
+      plantId,
       deviceIds: selectRequestedDeviceIds(deviceIds, req.query),
-      month: requestedMonth,
+      segment: "month",
+      date: requestedMonth,
     });
 
     res.json({
       success: true,
       status: "success",
-      data,
+      source: chartResult.source,
+      data: chartResult.data,
     });
   } catch (err) {
     if (isDeviceAccessDenied(err)) {
@@ -197,15 +200,18 @@ const getYearlyChart = async (req, res) => {
     }
 
     const deviceIds = await getDeviceIdData(userId, plantId, role);
-    const data = await getYearlyChartData({
+    const chartResult = await getChartData({
+      plantId,
       deviceIds: selectRequestedDeviceIds(deviceIds, req.query),
-      year: requestedYear,
+      segment: "year",
+      date: requestedYear,
     });
 
     res.json({
       success: true,
       status: "success",
-      data,
+      source: chartResult.source,
+      data: chartResult.data,
     });
   } catch (err) {
     if (isDeviceAccessDenied(err)) {
