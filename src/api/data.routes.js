@@ -107,6 +107,63 @@ async function getLiveStationEnergyMap(stationIds = []) {
   }
 }
 
+let allStationsMonthlyCache = { timestamp: 0, map: new Map() };
+const ALL_STATIONS_MONTHLY_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+async function getLiveStationMonthlyMap(stationIds = []) {
+  const now = Date.now();
+  if (
+    allStationsMonthlyCache.map.size > 0 &&
+    now - allStationsMonthlyCache.timestamp < ALL_STATIONS_MONTHLY_CACHE_TTL_MS
+  ) {
+    return allStationsMonthlyCache.map;
+  }
+
+  try {
+    const deyeClient = require("../integrations/deye/deye.client");
+    const nowD = new Date();
+    const currentYearMonth = `${nowD.getFullYear()}-${String(nowD.getMonth() + 1).padStart(2, "0")}`;
+    const chunkSize = 8;
+    const stationChunks = [];
+    for (let i = 0; i < stationIds.length; i += chunkSize) {
+      stationChunks.push(stationIds.slice(i, i + chunkSize));
+    }
+
+    const map = new Map(allStationsMonthlyCache.map);
+    for (const chunk of stationChunks) {
+      const results = await Promise.all(
+        chunk.map(async (stId) => {
+          try {
+            const res = await deyeClient.post("/v1.0/station/history", {
+              stationId: Number(stId),
+              granularity: 3,
+              startAt: currentYearMonth,
+              endAt: currentYearMonth,
+            });
+            const val = Number(res?.stationDataItems?.[0]?.generationValue || 0);
+            return { id: Number(stId), monthlyKwh: Number(val.toFixed(2)) };
+          } catch {
+            return { id: Number(stId), monthlyKwh: 0 };
+          }
+        })
+      );
+      for (const r of results) {
+        if (r.monthlyKwh > 0) {
+          map.set(r.id, r.monthlyKwh);
+        }
+      }
+    }
+
+    if (map.size > 0) {
+      allStationsMonthlyCache = { timestamp: now, map };
+    }
+    return map;
+  } catch (err) {
+    console.warn("[data.routes] getLiveStationMonthlyMap warning:", err.message);
+    return allStationsMonthlyCache.map;
+  }
+}
+
 let lastStationAuditTime = 0;
 const STATION_AUDIT_INTERVAL_MS = 15 * 60 * 1000;
 
@@ -126,7 +183,11 @@ router.get("/stations", auth, async (req, res) => {
     }
 
     // Retrieve authentic real-time daily & accumulative energy from Deye Cloud inverters
-    const liveEnergyMap = await getLiveStationEnergyMap(stationIds);
+    // and authentic month-to-date energy from Deye Cloud station history
+    const [liveEnergyMap, liveMonthlyMap] = await Promise.all([
+      getLiveStationEnergyMap(stationIds),
+      getLiveStationMonthlyMap(stationIds),
+    ]);
 
     const stations = (rawList || [])
 
@@ -176,12 +237,12 @@ router.get("/stations", auth, async (req, res) => {
               ? Number(Number(st.generationTotal).toFixed(2))
               : (st.totalEnergy != null ? Number(st.totalEnergy) : undefined));
 
-        const dayOfMonth = new Date().getDate();
-        const monthlyProd = st.generationMonth != null
-          ? Number(Number(st.generationMonth).toFixed(2))
-          : (st.monthlyEnergy != null
-              ? Number(st.monthlyEnergy)
-              : (dailyProd > 0 ? Number((dailyProd * Math.max(1, dayOfMonth)).toFixed(2)) : undefined));
+        const liveMonthly = liveMonthlyMap.get(Number(id));
+        const monthlyProd = liveMonthly != null && liveMonthly > 0
+          ? liveMonthly
+          : (st.generationMonth != null
+              ? Number(Number(st.generationMonth).toFixed(2))
+              : (st.monthlyEnergy != null ? Number(st.monthlyEnergy) : 0));
 
         return {
           id,
