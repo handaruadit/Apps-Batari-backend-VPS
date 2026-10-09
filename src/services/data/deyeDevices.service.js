@@ -140,31 +140,46 @@ async function fetchDeyeStationDevicesWithLatest(
       ]);
 
       // Consumption / Load (Watts & kWh) - Akumulasi Load reguler + UPS Load
-      let sumLoadW = 0;
+      // 1. Rincian beban fasa (LoadPhasePowerA..C atau LoadPowerL1..3)
+      const pA = getNum(["LoadPhasePowerA", "loadPhasePowerA"]);
+      const pB = getNum(["LoadPhasePowerB", "loadPhasePowerB"]);
+      const pC = getNum(["LoadPhasePowerC", "loadPhasePowerC"]);
+      const sumPhaseLoadW = (pA > 0 ? pA : 0) + (pB > 0 ? pB : 0) + (pC > 0 ? pC : 0);
+
+      let sumLoadL_W = 0;
       for (let l = 1; l <= 3; l++) {
         const w = getNum([`LoadPowerL${l}`, `loadPowerL${l}`]);
-        if (w > 0) sumLoadW += w;
+        if (w > 0) sumLoadL_W += w;
       }
-      if (sumLoadW === 0) {
-        sumLoadW = getNum(["LoadPower", "loadPower", "TotalLoadPower"]);
-      }
+
+      const totalConsParamW = getNum([
+        "TotalConsumptionPower",
+        "totalConsumptionPower",
+        "TotalLoadPower",
+        "totalLoadPower",
+        "ConsumptionPower",
+        "consumptionPower",
+        "LoadPower",
+        "loadPower",
+      ]);
+
+      // Beban reguler riil (Watts):
+      // Pada inverter 3-fasa / komersial Deye, TotalConsumptionPower atau LoadPhasePowerA..C adalah beban utama
+      const sumLoadW = Math.max(totalConsParamW, sumPhaseLoadW, sumLoadL_W);
+
+      // 2. UPS Load (Watts):
       const upsLoadW = getNum([
         "UPSLoadPower",
         "upsLoadPower",
         "TotalUPSLoadPower",
+        "totalUpsLoadPower",
         "upsPower",
         "UPSPower",
       ]);
-      const totalConsParamW = getNum([
-        "TotalConsumptionPower",
-        "totalConsumptionPower",
-        "ConsumptionPower",
-        "consumptionPower",
-      ]);
 
+      // Akumulasi Beban = Load Reguler + UPS Load (semua dikonversi ke kW secara seragam)
       const sumCombinedW = sumLoadW + upsLoadW;
-      const rawConsW = sumCombinedW > 0 ? sumCombinedW : totalConsParamW;
-      const consKw = Number((rawConsW / 1000).toFixed(2));
+      const consKw = Number((sumCombinedW / 1000).toFixed(2));
       const loadOnlyKw = Number((sumLoadW / 1000).toFixed(2));
       const upsOnlyKw = Number((upsLoadW / 1000).toFixed(2));
       const dailyConsKwh = getNum(["DailyConsumption"]);

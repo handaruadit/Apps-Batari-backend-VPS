@@ -589,7 +589,7 @@ router.get("/stations/:stationId", auth, async (req, res) => {
           latestData: d.latestData || [],
         };
       });
-    } else {
+    } else if (devices.length === 0) {
       // Fallback to Deye Cloud API devices if not yet registered in NeonDB
       try {
         const devList = await deyeService.getStationDevices(stationId);
