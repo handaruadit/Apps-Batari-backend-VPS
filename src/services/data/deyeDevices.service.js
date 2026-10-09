@@ -177,11 +177,30 @@ async function fetchDeyeStationDevicesWithLatest(
         "UPSPower",
       ]);
 
+      // Deteksi whole-home UPS: jika seluruh beban rumah berada di port UPS
+      // (TotalConsumptionPower dan UPSLoadPower praktis sama), jangan dijumlahkan ganda
+      const isWholeHomeUps =
+        upsLoadW > 0 &&
+        (Math.abs(sumLoadW - upsLoadW) < 50 || upsLoadW >= sumLoadW * 0.95);
+
+      let effectiveRegularW = 0;
+      let effectiveUpsW = 0;
+      let sumCombinedW = 0;
+
+      if (isWholeHomeUps) {
+        effectiveRegularW = 0;
+        effectiveUpsW = upsLoadW;
+        sumCombinedW = upsLoadW;
+      } else {
+        effectiveRegularW = sumLoadW;
+        effectiveUpsW = upsLoadW;
+        sumCombinedW = sumLoadW + upsLoadW;
+      }
+
       // Akumulasi Beban = Load Reguler + UPS Load (semua dikonversi ke kW secara seragam)
-      const sumCombinedW = sumLoadW + upsLoadW;
       const consKw = Number((sumCombinedW / 1000).toFixed(2));
-      const loadOnlyKw = Number((sumLoadW / 1000).toFixed(2));
-      const upsOnlyKw = Number((upsLoadW / 1000).toFixed(2));
+      const loadOnlyKw = Number((effectiveRegularW / 1000).toFixed(2));
+      const upsOnlyKw = Number((effectiveUpsW / 1000).toFixed(2));
       const dailyConsKwh = getNum(["DailyConsumption"]);
       const dailyEnergyPurchased = getNum([
         "DailyEnergyPurchased",

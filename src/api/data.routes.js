@@ -677,7 +677,9 @@ router.get("/stations/:stationId", auth, async (req, res) => {
       ? Number(totalInvConsKw.toFixed(2))
       : (totalInvLoadKw + totalInvUpsKw > 0 ? Number((totalInvLoadKw + totalInvUpsKw).toFixed(2)) : load);
 
-    const stationRegularLoad = totalInvLoadKw > 0 ? Number(totalInvLoadKw.toFixed(2)) : effectiveLoadKw;
+    const stationRegularLoad = totalInvLoadKw > 0
+      ? Number(totalInvLoadKw.toFixed(2))
+      : (totalInvUpsKw > 0 ? 0 : effectiveLoadKw);
     const stationUpsLoad = totalInvUpsKw > 0 ? Number(totalInvUpsKw.toFixed(2)) : 0;
 
     const responseData = {
