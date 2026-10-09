@@ -139,21 +139,34 @@ async function fetchDeyeStationDevicesWithLatest(
         "cumulativeProductionActive",
       ]);
 
-      // Consumption / Load (Watts & kWh)
+      // Consumption / Load (Watts & kWh) - Akumulasi Load reguler + UPS Load
       let sumLoadW = 0;
       for (let l = 1; l <= 3; l++) {
         const w = getNum([`LoadPowerL${l}`, `loadPowerL${l}`]);
         if (w > 0) sumLoadW += w;
       }
-      const rawConsW =
-        sumLoadW > 0
-          ? sumLoadW
-          : getNum([
-              "UPSLoadPower",
-              "upsLoadPower",
-              "TotalConsumptionPower",
-            ]);
+      if (sumLoadW === 0) {
+        sumLoadW = getNum(["LoadPower", "loadPower", "TotalLoadPower"]);
+      }
+      const upsLoadW = getNum([
+        "UPSLoadPower",
+        "upsLoadPower",
+        "TotalUPSLoadPower",
+        "upsPower",
+        "UPSPower",
+      ]);
+      const totalConsParamW = getNum([
+        "TotalConsumptionPower",
+        "totalConsumptionPower",
+        "ConsumptionPower",
+        "consumptionPower",
+      ]);
+
+      const sumCombinedW = sumLoadW + upsLoadW;
+      const rawConsW = sumCombinedW > 0 ? sumCombinedW : totalConsParamW;
       const consKw = Number((rawConsW / 1000).toFixed(2));
+      const loadOnlyKw = Number((sumLoadW / 1000).toFixed(2));
+      const upsOnlyKw = Number((upsLoadW / 1000).toFixed(2));
       const dailyConsKwh = getNum(["DailyConsumption"]);
       const dailyEnergyPurchased = getNum([
         "DailyEnergyPurchased",
@@ -268,6 +281,18 @@ async function fetchDeyeStationDevicesWithLatest(
           created_at: lastUpdateIso,
         },
         {
+          category: "out",
+          type: "loadPower",
+          value: loadOnlyKw,
+          created_at: lastUpdateIso,
+        },
+        {
+          category: "out",
+          type: "upsLoad",
+          value: upsOnlyKw,
+          created_at: lastUpdateIso,
+        },
+        {
           category: "production",
           type: "pvGenerate",
           value: consKw,
@@ -288,6 +313,8 @@ async function fetchDeyeStationDevicesWithLatest(
         dailyEnergy: Number(Number(dailyProdKwh).toFixed(2)),
         totalEnergy: Number(Number(totalProdKwh).toFixed(2)),
         consumptionPower: consKw,
+        loadPower: loadOnlyKw,
+        upsLoadPower: upsOnlyKw,
         dailyConsumption: Number(Number(dailyConsKwh).toFixed(2)),
         dailyEnergyPurchased: Number(Number(dailyEnergyPurchased).toFixed(2)),
         dailyGridFeedIn: Number(Number(dailyGridFeedIn).toFixed(2)),

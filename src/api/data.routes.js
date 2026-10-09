@@ -668,6 +668,18 @@ router.get("/stations/:stationId", auth, async (req, res) => {
     const creator = stationMeta?.ownerName || "Deye Cloud";
     const gridConnection = stationMeta?.gridInterconnectionType || "GRID_TIED";
 
+    const invertersList = Array.isArray(devices) ? devices.filter(d => d.type === 'INVERTER' || d.deviceType === 'INVERTER') : [];
+    const totalInvLoadKw = invertersList.reduce((acc, d) => acc + (Number(d.loadPower) || 0), 0);
+    const totalInvUpsKw = invertersList.reduce((acc, d) => acc + (Number(d.upsLoadPower) || 0), 0);
+    const totalInvConsKw = invertersList.reduce((acc, d) => acc + (Number(d.consumptionPower) || 0), 0);
+
+    const effectiveLoadKw = totalInvConsKw > 0
+      ? Number(totalInvConsKw.toFixed(2))
+      : (totalInvLoadKw + totalInvUpsKw > 0 ? Number((totalInvLoadKw + totalInvUpsKw).toFixed(2)) : load);
+
+    const stationRegularLoad = totalInvLoadKw > 0 ? Number(totalInvLoadKw.toFixed(2)) : effectiveLoadKw;
+    const stationUpsLoad = totalInvUpsKw > 0 ? Number(totalInvUpsKw.toFixed(2)) : 0;
+
     const responseData = {
       id: stationId,
         plantsId: String(stationId),
@@ -684,7 +696,7 @@ router.get("/stations/:stationId", auth, async (req, res) => {
         capacity,
         production: computedStatus === "Offline" ? 0 : pv,
         pv: computedStatus === "Offline" ? 0 : pv,
-        pvGenerate: load,
+        pvGenerate: effectiveLoadKw,
         dailyProduction: energySummary.productionTodayKwh,
         productionToday: energySummary.productionTodayKwh,
         monthlyProduction: stationMeta?.generationMonth != null
@@ -702,9 +714,11 @@ router.get("/stations/:stationId", auth, async (req, res) => {
         battery,
         gridPower: grid,
         grid,
-        loadPower: load,
-        load,
-        upsLoad: load,
+        loadPower: effectiveLoadKw,
+        load: effectiveLoadKw,
+        regularLoad: stationRegularLoad,
+        upsLoad: stationUpsLoad,
+        upsLoadPower: stationUpsLoad,
         currency: "Rp",
         unitPrice: "--",
         constructionCost: "--",
