@@ -85,7 +85,7 @@ const syncMissingDeyeStations = async () => {
         let devices = [];
         try {
           devices = await deyeService.getStationDevices(st.stationId || st.id);
-        } catch {}
+        } catch { }
 
         await repo.importStation({
           ownerUserId,
@@ -112,8 +112,8 @@ const syncMissingDeyeStations = async () => {
 
 //===== (getPlants) ======
 const getPlants = async (userId, isAdmin = false) => {
-  // Seamlessly check & sync any unintegrated Deye station (e.g. KBS Timbangan 3 or newly added ones)
-  await syncMissingDeyeStations().catch(() => {});
+  // Seamlessly check & sync any unintegrated Deye station in background without blocking HTTP response
+  syncMissingDeyeStations().catch(() => { });
 
   const safeUserId = isValidUuid(userId) ? userId : null;
   const query = isAdmin
