@@ -240,6 +240,8 @@ const updatePlant = async (plantId, data) => {
     "city",
     "province",
     "postal_code",
+    "tilt",
+    "azimuth",
   ];
   const payload = {};
   for (const key of allowed) {

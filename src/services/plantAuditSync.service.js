@@ -9,6 +9,27 @@ const SUPER_ADMIN_EMAILS = [
   "admin@batarienergy.com",
 ];
 
+const ensurePlantColumns = async () => {
+  try {
+    const hasTilt = await db.schema.hasColumn("plants", "tilt");
+    if (!hasTilt) {
+      await db.schema.alterTable("plants", (table) => {
+        table.decimal("tilt", 5, 2).defaultTo(12.0);
+      });
+      console.log("[Plant Audit] ✅ Kolom 'tilt' berhasil ditambahkan ke tabel plants.");
+    }
+    const hasAzimuth = await db.schema.hasColumn("plants", "azimuth");
+    if (!hasAzimuth) {
+      await db.schema.alterTable("plants", (table) => {
+        table.decimal("azimuth", 5, 2).defaultTo(0.0);
+      });
+      console.log("[Plant Audit] ✅ Kolom 'azimuth' berhasil ditambahkan ke tabel plants.");
+    }
+  } catch (colErr) {
+    console.warn(`[Plant Audit] Schema ensurePlantColumns notice: ${colErr.message}`);
+  }
+};
+
 /**
  * Audits all operational stations from Deye Cloud API against the PostgreSQL database.
  * If any stations are missing or unintegrated, automatically registers them
@@ -16,6 +37,9 @@ const SUPER_ADMIN_EMAILS = [
  */
 const auditAndSyncDeyePlants = async () => {
   console.log("[Plant Audit] 🔍 Memulai audit stasiun Deye Cloud vs PostgreSQL database...");
+
+  // Pastikan kolom baru 'tilt' dan 'azimuth' sudah ada di tabel plants
+  await ensurePlantColumns();
 
   try {
     const rawStations = await deyeService.listStations();

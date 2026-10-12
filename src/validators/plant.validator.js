@@ -64,6 +64,30 @@ const validatePlantCreatePayload = (payload) => {
     return "electricity_price must be a valid number";
   }
 
+  if (
+    payload.tilt !== undefined &&
+    payload.tilt !== null &&
+    payload.tilt !== "" &&
+    (typeof Number(payload.tilt) !== "number" ||
+      Number.isNaN(Number(payload.tilt)) ||
+      Number(payload.tilt) < 0 ||
+      Number(payload.tilt) > 90)
+  ) {
+    return "tilt must be a valid number between 0 and 90";
+  }
+
+  if (
+    payload.azimuth !== undefined &&
+    payload.azimuth !== null &&
+    payload.azimuth !== "" &&
+    (typeof Number(payload.azimuth) !== "number" ||
+      Number.isNaN(Number(payload.azimuth)) ||
+      Number(payload.azimuth) < -180 ||
+      Number(payload.azimuth) > 180)
+  ) {
+    return "azimuth must be a valid number between -180 and 180";
+  }
+
   return null;
 };
 
