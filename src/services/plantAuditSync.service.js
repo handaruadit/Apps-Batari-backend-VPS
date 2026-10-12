@@ -30,6 +30,63 @@ const ensurePlantColumns = async () => {
   }
 };
 
+const enrichPlantLocations = async () => {
+  const CORRECT_LOCATIONS = [
+    { stationId: 61419275, namePattern: '%Jeruk Purut%', city: 'Jakarta Selatan', province: 'DKI Jakarta' },
+    { stationId: 61994341, namePattern: '%Aditya%', city: 'Jakarta Barat', province: 'DKI Jakarta' },
+    { stationId: 62136529, namePattern: '%Vinka%', city: 'Jakarta Timur', province: 'DKI Jakarta', lat: -6.2250, lng: 106.8845 },
+    { stationId: 62004725, namePattern: '%asti%', city: 'Tangerang Selatan', province: 'Banten' },
+    { stationId: 62093529, namePattern: '%Dion%', city: 'Tangerang Selatan', province: 'Banten' },
+    { stationId: 62358966, namePattern: '%Timbangan 2%', city: 'Cilegon', province: 'Banten' },
+    { stationId: 62664914, namePattern: '%Timbangan 3%', city: 'Cilegon', province: 'Banten' },
+    { stationId: 62000532, namePattern: '%Ridwan%', city: 'Cirebon', province: 'Jawa Barat' },
+    { stationId: 62435287, namePattern: '%Tonny%', city: 'Cirebon', province: 'Jawa Barat' },
+    { stationId: 62030330, namePattern: '%sabar%', city: 'Depok', province: 'Jawa Barat' },
+    { stationId: 62090724, namePattern: '%Novi%', city: 'Depok', province: 'Jawa Barat' },
+    { stationId: 62041148, namePattern: '%Odih%', city: 'Cimahi', province: 'Jawa Barat' },
+    { stationId: 62053634, namePattern: '%tibra%', city: 'Bandung Barat', province: 'Jawa Barat' },
+    { stationId: 62448210, namePattern: '%Cisarua%', city: 'Bandung Barat', province: 'Jawa Barat' },
+    { stationId: 62086818, namePattern: '%Iwan%', city: 'Bandung', province: 'Jawa Barat' },
+    { stationId: 62112496, namePattern: '%Hanggara%', city: 'Bandung', province: 'Jawa Barat' },
+    { stationId: 62293855, namePattern: "%SA'ADATUDDAROIN%", city: 'Bandung', province: 'Jawa Barat' },
+    { stationId: 62506492, namePattern: '%Buah Batu%', city: 'Bandung', province: 'Jawa Barat' },
+    { stationId: 61788646, namePattern: '%Hendrianto%', city: 'Banyumas', province: 'Jawa Tengah' },
+    { stationId: 61819126, namePattern: '%Istiqom%', city: 'Kudus', province: 'Jawa Tengah' },
+    { stationId: 62399930, namePattern: '%Safira%', city: 'Tegal', province: 'Jawa Tengah' },
+    { stationId: 62566371, namePattern: '%dimas%', city: 'Gresik', province: 'Jawa Timur' },
+    { stationId: 61719930, namePattern: '%PJT%', city: 'Malang', province: 'Jawa Timur' },
+    { stationId: 61820345, namePattern: '%Debby%', city: 'Malang', province: 'Jawa Timur' },
+    { stationId: 61897926, namePattern: '%sanny%', city: 'Tabanan', province: 'Bali' },
+    { stationId: 62433430, namePattern: '%Menjangan%', city: 'Buleleng', province: 'Bali' },
+    { stationId: 61582048, namePattern: '%Muharam%', city: 'Makassar', province: 'Sulawesi Selatan' },
+    { stationId: 61618898, namePattern: '%Betoambari%', city: 'Bau-Bau', province: 'Sulawesi Tenggara' },
+    { stationId: 61760634, namePattern: '%Bau-Bau Stand-alone%', city: 'Bau-Bau', province: 'Sulawesi Tenggara' },
+    { stationId: 62163831, namePattern: '%guruh%', city: 'Palembang', province: 'Sumatera Selatan' },
+    { stationId: 62178565, namePattern: '%Norman%', city: 'Padang', province: 'Sumatera Barat' },
+  ];
+
+  try {
+    for (const item of CORRECT_LOCATIONS) {
+      const updateData = { city: item.city, province: item.province };
+      if (item.lat && item.lng) {
+        updateData.latitude = item.lat;
+        updateData.longitude = item.lng;
+      }
+      await db("plants")
+        .whereIn("id", function () {
+          this.select("plant_id")
+            .from("deye_integrations")
+            .where("station_id", item.stationId);
+        })
+        .orWhere("name", "ilike", item.namePattern)
+        .update(updateData);
+    }
+    console.log("[Plant Audit] ✅ Metadata kota dan provinsi 31 stasiun berhasil disinkronkan ke PostgreSQL.");
+  } catch (err) {
+    console.warn(`[Plant Audit] Notice sync plant locations: ${err.message}`);
+  }
+};
+
 /**
  * Audits all operational stations from Deye Cloud API against the PostgreSQL database.
  * If any stations are missing or unintegrated, automatically registers them
@@ -38,8 +95,11 @@ const ensurePlantColumns = async () => {
 const auditAndSyncDeyePlants = async () => {
   console.log("[Plant Audit] 🔍 Memulai audit stasiun Deye Cloud vs PostgreSQL database...");
 
-  // Pastikan kolom baru 'tilt' dan 'azimuth' sudah ada di tabel plants
+  // 1. Pastikan kolom baru 'tilt' dan 'azimuth' sudah ada di tabel plants
   await ensurePlantColumns();
+
+  // 2. Otomatis sinkronkan kota dan provinsi stasiun ke tabel plants
+  await enrichPlantLocations();
 
   try {
     const rawStations = await deyeService.listStations();
