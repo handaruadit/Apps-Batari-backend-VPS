@@ -3,16 +3,16 @@ const express = require("express");
 const router = express.Router();
 const auth = require("../middlewares/auth.middleware");
 const {
-  sendManualPlantData,
-  fetchDeviceData,
-  getDaily,
-  getMonthly,
-  getYearly,
-  getLifetime,
-  getChart,
-  getMonthlyChart,
-  getYearlyChart
-} = require("../controllers/data.controller");
+    sendManualPlantData,
+    fetchDeviceData, 
+    getDaily, 
+    getMonthly, 
+    getYearly, 
+    getLifetime,
+    getChart,
+    getMonthlyChart,
+    getYearlyChart
+ } = require("../controllers/data.controller");
 
 //===== (MockPlant Manual Route) ======
 router.post("/manual/send", auth, sendManualPlantData);
@@ -130,31 +130,29 @@ async function getLiveStationMonthlyMap(stationIds = []) {
     }
 
     const map = new Map(allStationsMonthlyCache.map);
-    await Promise.all(
-      stationChunks.map(async (chunk) => {
-        const results = await Promise.all(
-          chunk.map(async (stId) => {
-            try {
-              const res = await deyeClient.post("/v1.0/station/history", {
-                stationId: Number(stId),
-                granularity: 3,
-                startAt: currentYearMonth,
-                endAt: currentYearMonth,
-              });
-              const val = Number(res?.stationDataItems?.[0]?.generationValue || 0);
-              return { id: Number(stId), monthlyKwh: Number(val.toFixed(2)) };
-            } catch {
-              return { id: Number(stId), monthlyKwh: 0 };
-            }
-          })
-        );
-        for (const r of results) {
-          if (r.monthlyKwh > 0) {
-            map.set(r.id, r.monthlyKwh);
+    for (const chunk of stationChunks) {
+      const results = await Promise.all(
+        chunk.map(async (stId) => {
+          try {
+            const res = await deyeClient.post("/v1.0/station/history", {
+              stationId: Number(stId),
+              granularity: 3,
+              startAt: currentYearMonth,
+              endAt: currentYearMonth,
+            });
+            const val = Number(res?.stationDataItems?.[0]?.generationValue || 0);
+            return { id: Number(stId), monthlyKwh: Number(val.toFixed(2)) };
+          } catch {
+            return { id: Number(stId), monthlyKwh: 0 };
           }
+        })
+      );
+      for (const r of results) {
+        if (r.monthlyKwh > 0) {
+          map.set(r.id, r.monthlyKwh);
         }
-      })
-    );
+      }
+    }
 
     if (map.size > 0) {
       allStationsMonthlyCache = { timestamp: now, map };
@@ -181,7 +179,7 @@ router.get("/stations", auth, async (req, res) => {
     if (now - lastStationAuditTime > STATION_AUDIT_INTERVAL_MS) {
       lastStationAuditTime = now;
       const { auditAndSyncDeyePlants } = require("../services/plantAuditSync.service");
-      auditAndSyncDeyePlants().catch(() => { });
+      auditAndSyncDeyePlants().catch(() => {});
     }
 
     // Retrieve authentic real-time daily & accumulative energy from Deye Cloud inverters
@@ -231,20 +229,20 @@ router.get("/stations", auth, async (req, res) => {
         const dailyProd = liveEnergy != null && liveEnergy.daily >= 0
           ? liveEnergy.daily
           : (st.generationDay != null
-            ? Number(Number(st.generationDay).toFixed(2))
-            : (cachedEnergy?.summary?.productionTodayKwh ?? (st.dailyEnergy != null ? Number(st.dailyEnergy) : undefined)));
+              ? Number(Number(st.generationDay).toFixed(2))
+              : (cachedEnergy?.summary?.productionTodayKwh ?? (st.dailyEnergy != null ? Number(st.dailyEnergy) : undefined)));
         const accProd = liveEnergy != null && liveEnergy.total >= 0
           ? liveEnergy.total
           : (st.generationTotal != null
-            ? Number(Number(st.generationTotal).toFixed(2))
-            : (st.totalEnergy != null ? Number(st.totalEnergy) : undefined));
+              ? Number(Number(st.generationTotal).toFixed(2))
+              : (st.totalEnergy != null ? Number(st.totalEnergy) : undefined));
 
         const liveMonthly = liveMonthlyMap.get(Number(id));
         const monthlyProd = liveMonthly != null && liveMonthly > 0
           ? liveMonthly
           : (st.generationMonth != null
-            ? Number(Number(st.generationMonth).toFixed(2))
-            : (st.monthlyEnergy != null ? Number(st.monthlyEnergy) : 0));
+              ? Number(Number(st.generationMonth).toFixed(2))
+              : (st.monthlyEnergy != null ? Number(st.monthlyEnergy) : 0));
 
         return {
           id,
@@ -456,7 +454,7 @@ router.get("/stations/:stationId", auth, async (req, res) => {
       if (integration?.station_id) {
         resolvedStationId = Number(integration.station_id);
       }
-    } catch (_) { }
+    } catch (_) {}
     const stationId = resolvedStationId;
 
     // Fast memory cache check (60s TTL - avoids frequent remote round trips)
@@ -550,7 +548,7 @@ router.get("/stations/:stationId", auth, async (req, res) => {
         if (deyeInverters.length > 0) {
           devices = deyeInverters;
         }
-      } catch (_) { }
+      } catch (_) {}
     }
 
     if (devices.length === 0 && Array.isArray(dbDevices) && dbDevices.length > 0) {
@@ -566,14 +564,14 @@ router.get("/stations/:stationId", auth, async (req, res) => {
           d.connectStatus === 1
             ? "Online"
             : d.connectStatus === 0
-              ? "Offline"
-              : (isStationGateway ? (stationMeta?.connectionStatus === "NORMAL" || stationMeta?.status === "NORMAL" ? "Online" : "Offline") : "Online");
+            ? "Offline"
+            : (isStationGateway ? (stationMeta?.connectionStatus === "NORMAL" || stationMeta?.status === "NORMAL" ? "Online" : "Offline") : "Online");
 
         const devPower = isStationGateway
           ? pv
           : (Array.isArray(d.latestData) && d.latestData.length > 0
-            ? (Math.abs(Number(d.latestData.find(r => r.category === 'pv' || r.type === 'power')?.value)) || 0)
-            : 0);
+              ? (Math.abs(Number(d.latestData.find(r => r.category === 'pv' || r.type === 'power')?.value)) || 0)
+              : 0);
 
         return {
           id: d.id,
@@ -654,10 +652,10 @@ router.get("/stations/:stationId", auth, async (req, res) => {
       rawStatus === "NORMAL"
         ? "Online"
         : rawStatus === "ALL_OFFLINE"
-          ? "Offline"
-          : rawStatus === "NO_DEVICE"
-            ? "Incomplete"
-            : (devices.length > 0 ? "Online" : "Incomplete");
+        ? "Offline"
+        : rawStatus === "NO_DEVICE"
+        ? "Incomplete"
+        : (devices.length > 0 ? "Online" : "Incomplete");
 
     const capacity = Number(stationMeta?.installedCapacity || stationMeta?.capacity || 0);
     const stationName = stationMeta?.stationName || stationMeta?.name || dbPlant?.name || `Plant ${stationId}`;
@@ -686,64 +684,64 @@ router.get("/stations/:stationId", auth, async (req, res) => {
 
     const responseData = {
       id: stationId,
-      plantsId: String(stationId),
-      name: stationName,
-      address,
-      city,
-      province,
-      postalCode: "",
-      coordinates,
-      timeZone,
-      status: computedStatus,
-      comStatus: computedStatus,
-      alertsStatus: "No Alerts",
-      capacity,
-      production: computedStatus === "Offline" ? 0 : pv,
-      pv: computedStatus === "Offline" ? 0 : pv,
-      pvGenerate: effectiveLoadKw,
-      dailyProduction: energySummary.productionTodayKwh,
-      productionToday: energySummary.productionTodayKwh,
-      monthlyProduction: stationMeta?.generationMonth != null
-        ? Number(Number(stationMeta.generationMonth).toFixed(2))
-        : (allStationsMonthlyCache?.map?.get(Number(stationId)) || 0),
-      accumulativeProduction: stationMeta?.generationTotal != null
-        ? Number(Number(stationMeta.generationTotal).toFixed(2))
-        : (devices.reduce((s, d) => s + (d.totalEnergy || 0), 0) || 0),
-      accumulativeConsumption: devices.reduce((s, d) => s + (d.totalConsumption || 0), 0) || 0,
-      gridConnection,
-      batteryCapacity: "10kWh",
-      batterySoc: soc,
-      soc,
-      batteryPower: battery,
-      battery,
-      gridPower: grid,
-      grid,
-      loadPower: effectiveLoadKw,
-      load: effectiveLoadKw,
-      regularLoad: stationRegularLoad,
-      upsLoad: stationUpsLoad,
-      upsLoadPower: stationUpsLoad,
-      currency: "Rp",
-      unitPrice: "--",
-      constructionCost: "--",
-      creator,
-      createTime,
-      weatherTemperature: 28,
-      weatherConditionText: "Sunny",
-      isDeviceOnline: computedStatus === "Online",
-      energySummary,
-      consumptionTodayKwh: energySummary.consumptionTodayKwh,
-      productionTodayKwh: energySummary.productionTodayKwh,
-      gridKwh: energySummary.gridKwh,
-      exportKwh: energySummary.exportKwh,
-      batteryChargeKwh: energySummary.batteryChargeKwh,
-      batteryDischargeKwh: energySummary.batteryDischargeKwh,
-      devices,
-      alerts: [],
-      lastUpdateTime: lastUpdateIso,
-      updatedAt: lastUpdateIso,
-      source: "deye_live",
-    };
+        plantsId: String(stationId),
+        name: stationName,
+        address,
+        city,
+        province,
+        postalCode: "",
+        coordinates,
+        timeZone,
+        status: computedStatus,
+        comStatus: computedStatus,
+        alertsStatus: "No Alerts",
+        capacity,
+        production: computedStatus === "Offline" ? 0 : pv,
+        pv: computedStatus === "Offline" ? 0 : pv,
+        pvGenerate: effectiveLoadKw,
+        dailyProduction: energySummary.productionTodayKwh,
+        productionToday: energySummary.productionTodayKwh,
+        monthlyProduction: stationMeta?.generationMonth != null
+          ? Number(Number(stationMeta.generationMonth).toFixed(2))
+          : (allStationsMonthlyCache?.map?.get(Number(stationId)) || 0),
+        accumulativeProduction: stationMeta?.generationTotal != null
+          ? Number(Number(stationMeta.generationTotal).toFixed(2))
+          : (devices.reduce((s, d) => s + (d.totalEnergy || 0), 0) || 0),
+        accumulativeConsumption: devices.reduce((s, d) => s + (d.totalConsumption || 0), 0) || 0,
+        gridConnection,
+        batteryCapacity: "10kWh",
+        batterySoc: soc,
+        soc,
+        batteryPower: battery,
+        battery,
+        gridPower: grid,
+        grid,
+        loadPower: effectiveLoadKw,
+        load: effectiveLoadKw,
+        regularLoad: stationRegularLoad,
+        upsLoad: stationUpsLoad,
+        upsLoadPower: stationUpsLoad,
+        currency: "Rp",
+        unitPrice: "--",
+        constructionCost: "--",
+        creator,
+        createTime,
+        weatherTemperature: 28,
+        weatherConditionText: "Sunny",
+        isDeviceOnline: computedStatus === "Online",
+        energySummary,
+        consumptionTodayKwh: energySummary.consumptionTodayKwh,
+        productionTodayKwh: energySummary.productionTodayKwh,
+        gridKwh: energySummary.gridKwh,
+        exportKwh: energySummary.exportKwh,
+        batteryChargeKwh: energySummary.batteryChargeKwh,
+        batteryDischargeKwh: energySummary.batteryDischargeKwh,
+        devices,
+        alerts: [],
+        lastUpdateTime: lastUpdateIso,
+        updatedAt: lastUpdateIso,
+        source: "deye_live",
+      };
 
     stationDetailCache.set(stationId, { timestamp: nowMs, data: responseData });
 
