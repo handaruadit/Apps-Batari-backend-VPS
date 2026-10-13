@@ -18,9 +18,9 @@ const {
 const deyeChartCache = new Map();
 const DEYE_CHART_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
-const getCachedDeyeChart = (key) => {
+const getCachedDeyeChart = (key, maxAgeMs = DEYE_CHART_CACHE_TTL_MS) => {
   const entry = deyeChartCache.get(key);
-  if (entry && Date.now() - entry.timestamp < DEYE_CHART_CACHE_TTL_MS) {
+  if (entry && Date.now() - entry.timestamp < maxAgeMs) {
     return entry.data;
   }
   return null;
@@ -362,6 +362,11 @@ const getChartData = async ({ plantId, deviceIds, segment, date }) => {
       const yyyy = String(y);
       const mm = String(m).padStart(2, "0");
       const dd = String(d).padStart(2, "0");
+
+      const cacheKey = `day_${stationId}_${yyyy}-${mm}-${dd}`;
+      const cached = getCachedDeyeChart(cacheKey, 3 * 60 * 1000); // 3 minutes TTL for intraday live chart
+      if (cached) return cached;
+
       const startTimestamp = Math.floor(new Date(`${yyyy}-${mm}-${dd}T00:00:00+07:00`).getTime() / 1000);
       const endTimestamp = Math.min(
         Math.floor(new Date(`${yyyy}-${mm}-${dd}T23:59:59+07:00`).getTime() / 1000),
@@ -411,13 +416,15 @@ const getChartData = async ({ plantId, deviceIds, segment, date }) => {
           charge: [],
         };
 
-        return {
+        const response = {
           source: "deye_cloud",
           counts: getSeriesCounts(seriesData),
           rowCount: deyeRes.stationDataItems.length,
           range,
           data: seriesData,
         };
+        setCachedDeyeChart(cacheKey, response);
+        return response;
       }
     } catch (err) {
       console.warn("[ChartService] Deye history fetch error:", err.message);
