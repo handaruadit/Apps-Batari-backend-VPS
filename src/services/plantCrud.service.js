@@ -3,6 +3,7 @@ const db = require("../config/db");
 const {
   getRoleFlags,
   normalizeAccessRole,
+  resolvePlantId,
 } = require("./plantAccess.service");
 const deyeService = require("../integrations/deye/deye.service");
 const deyeRepository = require("../integrations/deye/deye.repository");
@@ -219,14 +220,30 @@ const getPlants = async (userId, isAdmin = false) => {
 
 //===== (getPlantById) ======
 const getPlantById = async (plantId) => {
+  const resolvedId = await resolvePlantId(plantId);
+  const targetId = resolvedId || plantId;
   return db("plants")
-    .select("id", "name", "location", "city", "province")
-    .where({ id: plantId })
+    .select(
+      "id",
+      "name",
+      "location",
+      "city",
+      "province",
+      "system_type",
+      "pv_capacity",
+      "battery_capacity",
+      "battery_desc",
+      "inverter_capacity",
+      "grid_capacity"
+    )
+    .where({ id: targetId })
     .first();
 };
 
 //===== (updatePlant) ======
 const updatePlant = async (plantId, data) => {
+  const resolvedId = await resolvePlantId(plantId);
+  const targetId = resolvedId || plantId;
   const allowed = [
     "name",
     "location",
@@ -235,6 +252,9 @@ const updatePlant = async (plantId, data) => {
     "system_type",
     "pv_capacity",
     "battery_capacity",
+    "battery_desc",
+    "inverter_capacity",
+    "grid_capacity",
     "electricity_price",
     "currency",
     "city",
@@ -247,7 +267,7 @@ const updatePlant = async (plantId, data) => {
   for (const key of allowed) {
     if (data[key] !== undefined) payload[key] = data[key];
   }
-  return await db("plants").where({ id: plantId }).update(payload);
+  return await db("plants").where({ id: targetId }).update(payload);
 };
 
 //===== (deletePlant) ======

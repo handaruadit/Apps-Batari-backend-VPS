@@ -29,9 +29,17 @@ CREATE TABLE IF NOT EXISTS plants (
   electricity_price numeric DEFAULT 0,
   currency text DEFAULT 'Rp',
   total_saving numeric DEFAULT 0,
+  inverter_capacity text,
+  grid_capacity text,
+  battery_desc text,
   created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE plants
+  ADD COLUMN IF NOT EXISTS inverter_capacity text,
+  ADD COLUMN IF NOT EXISTS grid_capacity text,
+  ADD COLUMN IF NOT EXISTS battery_desc text;
 
 --===== (Plant Access) ======
 CREATE TABLE IF NOT EXISTS user_plants (

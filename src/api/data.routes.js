@@ -184,17 +184,46 @@ router.get("/stations", auth, async (req, res) => {
 
     // Retrieve authentic real-time daily & accumulative energy from Deye Cloud inverters
     // and authentic month-to-date energy from Deye Cloud station history
-    const [liveEnergyMap, liveMonthlyMap] = await Promise.all([
+    const [liveEnergyMap, liveMonthlyMap, dbPlants] = await Promise.all([
       getLiveStationEnergyMap(stationIds),
       getLiveStationMonthlyMap(stationIds),
+      (async () => {
+        try {
+          const db = require("../config/db");
+          return await db("plants")
+            .leftJoin("deye_integrations", "plants.id", "deye_integrations.plant_id")
+            .select(
+              "plants.id as plant_id",
+              "plants.name as plant_name",
+              "plants.location",
+              "plants.city",
+              "plants.province",
+              "plants.system_type",
+              "plants.pv_capacity",
+              "plants.battery_capacity",
+              "plants.battery_desc",
+              "plants.inverter_capacity",
+              "plants.grid_capacity",
+              "deye_integrations.station_id as deye_station_id"
+            );
+        } catch (_) {
+          return [];
+        }
+      })(),
     ]);
 
-    const stations = (rawList || [])
+    const dbPlantMap = new Map();
+    for (const p of dbPlants || []) {
+      if (p.deye_station_id) dbPlantMap.set(String(p.deye_station_id), p);
+      if (p.plant_id) dbPlantMap.set(String(p.plant_id), p);
+    }
 
+    const stations = (rawList || [])
       .map(st => {
         const id = st.stationId || st.id;
+        const dbPlant = dbPlantMap.get(String(id));
         const pvKw = Number(((st.generationPower || 0) / 1000).toFixed(2));
-        const capacity = Number(st.installedCapacity || st.capacity || 0);
+        const capacity = Number(st.installedCapacity || st.capacity || dbPlant?.pv_capacity || 0);
 
         let status = "Online";
         if (
@@ -244,12 +273,18 @@ router.get("/stations", auth, async (req, res) => {
               ? Number(Number(st.generationMonth).toFixed(2))
               : (st.monthlyEnergy != null ? Number(st.monthlyEnergy) : 0));
 
+        const battCapStr = dbPlant?.battery_desc
+          ? dbPlant.battery_desc
+          : (dbPlant?.battery_capacity && Number(dbPlant.battery_capacity) > 0)
+            ? `${dbPlant.battery_capacity} kWh`
+            : (st.batteryCapacity && st.batteryCapacity !== "10kWh" && st.batteryCapacity !== "0" ? st.batteryCapacity : "0");
+
         return {
           id,
           name: st.stationName || st.name,
-          address: st.locationAddress || "",
-          city: "",
-          province: "",
+          address: dbPlant?.location || st.locationAddress || "",
+          city: dbPlant?.city || "",
+          province: dbPlant?.province || "",
           postalCode: "",
           coordinates: st.locationLat && st.locationLng ? `${st.locationLat}, ${st.locationLng}` : "",
           timeZone: st.regionTimezone || "Asia/Jakarta",
@@ -264,7 +299,11 @@ router.get("/stations", auth, async (req, res) => {
           accumulativeProduction: accProd,
           accumulativeConsumption: 0,
           gridConnection: st.gridInterconnectionType || "GRID_TIED",
-          batteryCapacity: st.batteryCapacity && st.batteryCapacity !== "10kWh" && st.batteryCapacity !== "0" ? st.batteryCapacity : "0",
+          systemType: dbPlant?.system_type || (st.gridInterconnectionType === "STAND_ALONE" ? "Off-Grid" : (st.batterySOC && Number(st.batterySOC) > 0 ? "Hybrid" : "On-Grid")),
+          inverterCapacity: dbPlant?.inverter_capacity || null,
+          gridCapacity: dbPlant?.grid_capacity || null,
+          batteryDesc: dbPlant?.battery_desc || null,
+          batteryCapacity: battCapStr,
           batterySoc: Number(st.batterySOC || 0),
           batteryPower: 0,
           gridPower: 0,
@@ -709,9 +748,15 @@ router.get("/stations/:stationId", auth, async (req, res) => {
           : (devices.reduce((s, d) => s + (d.totalEnergy || 0), 0) || 0),
         accumulativeConsumption: devices.reduce((s, d) => s + (d.totalConsumption || 0), 0) || 0,
         gridConnection,
-        batteryCapacity: (dbPlant?.battery_capacity && Number(dbPlant.battery_capacity) > 0)
-          ? `${dbPlant.battery_capacity} kWh`
-          : (stationMeta?.batteryCapacity && stationMeta.batteryCapacity !== "10kWh" && stationMeta.batteryCapacity !== "0" ? stationMeta.batteryCapacity : "0"),
+        systemType: dbPlant?.system_type || (gridConnection === "STAND_ALONE" ? "Off-Grid" : (battery !== 0 || soc > 0 ? "Hybrid" : "On-Grid")),
+        inverterCapacity: dbPlant?.inverter_capacity || null,
+        gridCapacity: dbPlant?.grid_capacity || null,
+        batteryDesc: dbPlant?.battery_desc || null,
+        batteryCapacity: dbPlant?.battery_desc
+          ? dbPlant.battery_desc
+          : (dbPlant?.battery_capacity && Number(dbPlant.battery_capacity) > 0)
+            ? `${dbPlant.battery_capacity} kWh`
+            : (stationMeta?.batteryCapacity && stationMeta.batteryCapacity !== "10kWh" && stationMeta.batteryCapacity !== "0" ? stationMeta.batteryCapacity : "0"),
         batterySoc: soc,
         soc,
         batteryPower: battery,
