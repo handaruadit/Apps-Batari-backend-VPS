@@ -264,7 +264,7 @@ router.get("/stations", auth, async (req, res) => {
           accumulativeProduction: accProd,
           accumulativeConsumption: 0,
           gridConnection: st.gridInterconnectionType || "GRID_TIED",
-          batteryCapacity: "10kWh",
+          batteryCapacity: st.batteryCapacity && st.batteryCapacity !== "10kWh" && st.batteryCapacity !== "0" ? st.batteryCapacity : "0",
           batterySoc: Number(st.batterySOC || 0),
           batteryPower: 0,
           gridPower: 0,
@@ -709,7 +709,9 @@ router.get("/stations/:stationId", auth, async (req, res) => {
           : (devices.reduce((s, d) => s + (d.totalEnergy || 0), 0) || 0),
         accumulativeConsumption: devices.reduce((s, d) => s + (d.totalConsumption || 0), 0) || 0,
         gridConnection,
-        batteryCapacity: "10kWh",
+        batteryCapacity: (dbPlant?.battery_capacity && Number(dbPlant.battery_capacity) > 0)
+          ? `${dbPlant.battery_capacity} kWh`
+          : (stationMeta?.batteryCapacity && stationMeta.batteryCapacity !== "10kWh" && stationMeta.batteryCapacity !== "0" ? stationMeta.batteryCapacity : "0"),
         batterySoc: soc,
         soc,
         batteryPower: battery,
